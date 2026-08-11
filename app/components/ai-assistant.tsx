@@ -6,8 +6,9 @@ import { Icon } from "./icons";
 
 type AiMessage = { role: "assistant" | "doctor"; text: string };
 
-export function AiAssistant({ patients }: { patients: Patient[] }) {
-  const [patientId, setPatientId] = useState(patients[1].id);
+export function AiAssistant({ patients, selectedPatientName }: { patients: Patient[]; selectedPatientName?: string }) {
+  const initialPatient = patients.find((patient) => patient.name === selectedPatientName) || patients[1] || patients[0];
+  const [patientId, setPatientId] = useState(initialPatient.id);
   const [messages, setMessages] = useState<AiMessage[]>([{ role: "assistant", text: "Good morning, Dr. Chika. I can help prepare for a visit, summarize the selected patient record, check medication considerations, or draft patient-friendly communication." }]);
   const [thinking, setThinking] = useState(false);
   const activePatient = patients.find((patient) => patient.id === patientId) || patients[0];
