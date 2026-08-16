@@ -3,11 +3,12 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { saveSession, type AuthUser } from "../lib/meditrust";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("doctor@meditrust360.com");
-  const [password, setPassword] = useState("doctor123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -15,19 +16,26 @@ export default function LoginPage() {
   const [forgot, setForgot] = useState(false);
   const [sent, setSent] = useState(false);
 
-  function signIn(event: FormEvent<HTMLFormElement>) {
+  async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (email.toLowerCase() !== "doctor@meditrust360.com" || password !== "doctor123") {
-      setError("That email or password doesn’t match our demo clinician account.");
-      return;
-    }
     setLoading(true);
-    window.setTimeout(() => {
-      const storage = remember ? localStorage : sessionStorage;
-      storage.setItem("meditrust_session", JSON.stringify({ name: "Dr. Chika Okafor", email, signedInAt: Date.now() }));
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ identifier: email.trim(), password, remember }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; message?: string; data?: { user: AuthUser } } | null;
+      if (!response.ok || !payload?.success || !payload.data?.user) throw new Error(payload?.message || "Unable to sign in.");
+      const supportedRoles = ["reception", "nurse", "doctor", "pharmacy", "lab"];
+      if (!payload.data.user.facility_staff || !supportedRoles.includes(payload.data.user.facility_staff.role)) throw new Error("This account is not linked to a supported facility staff workspace.");
+      saveSession({ user: payload.data.user }, remember);
       router.replace("/");
-    }, 650);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to sign in.");
+      setLoading(false);
+    }
   }
 
   function sendReset(event: FormEvent<HTMLFormElement>) {
@@ -40,7 +48,7 @@ export default function LoginPage() {
       <section className="login-brand-panel">
         <Image src="/meditrust360-logo-transparent.png" alt="MediTrust360" width={190} height={62} priority />
         <div className="login-brand-copy">
-          <span className="login-kicker">Clinician workspace</span>
+          <span className="login-kicker">Facility workspace</span>
           <h1>Better care starts with a clear view.</h1>
           <p>Appointments, patient records, messages and clinical work—securely connected in one calm workspace.</p>
           <div className="login-benefits">
@@ -54,7 +62,7 @@ export default function LoginPage() {
         <div className="login-mobile-logo"><Image src="/meditrust360-logo-transparent.png" alt="MediTrust360" width={170} height={54} /></div>
         <div className="login-card">
           {!forgot ? <>
-            <div className="login-heading"><span>Welcome back</span><h2>Sign in to your workspace</h2><p>Enter your clinician account details to continue.</p></div>
+            <div className="login-heading"><span>Welcome back</span><h2>Sign in to your workspace</h2><p>Your workspace adapts to your facility role.</p></div>
             <form onSubmit={signIn} className="login-form">
               <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@clinic.com" required /></label>
               <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div></label>
@@ -62,7 +70,7 @@ export default function LoginPage() {
               {error && <div className="login-error" role="alert">{error}</div>}
               <button className="login-submit" disabled={loading}>{loading ? <><span className="spinner" /> Signing in…</> : <>Sign in <span>→</span></>}</button>
             </form>
-            <div className="demo-account"><strong>Demo account</strong><p>doctor@meditrust360.com <span>·</span> doctor123</p><button onClick={() => { setEmail("doctor@meditrust360.com"); setPassword("doctor123"); setError(""); }}>Use demo credentials</button></div>
+            <div className="demo-account"><strong>Facility staff</strong><p>Reception, nursing and doctor accounts use the same secure sign-in.</p></div>
           </> : <>
             <button className="login-back" onClick={() => setForgot(false)}>← Back to sign in</button>
             <div className="login-heading"><span>Account recovery</span><h2>Reset your password</h2><p>We’ll send a secure reset link to your registered email.</p></div>
