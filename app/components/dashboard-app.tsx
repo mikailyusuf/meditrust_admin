@@ -12,6 +12,16 @@ import {
 import { Icon, type IconName } from "./icons";
 
 type NavItem = { label: string; icon: IconName };
+type DoctorQueueFilter = "active" | "waiting" | "vitals_done" | "with_doctor" | "completed" | "cancelled";
+
+const doctorQueueFilters: { value: DoctorQueueFilter; label: string }[] = [
+  { value: "active", label: "Active queue" },
+  { value: "waiting", label: "Waiting" },
+  { value: "vitals_done", label: "Vitals done" },
+  { value: "with_doctor", label: "With doctor" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 const navigation: Record<StaffRole, NavItem[]> = {
   reception: [{ label: "Overview", icon: "grid" }, { label: "Patient check-in", icon: "userPlus" }, { label: "Visit queue", icon: "clock" }],
@@ -29,7 +39,10 @@ export function DashboardApp() {
   const [authReady, setAuthReady] = useState(false);
   const [active, setActive] = useState("Overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [facility, setFacility] = useState<Facility | null>(null);
+  const [facilityLoading, setFacilityLoading] = useState(false);
   const [queue, setQueue] = useState<Visit[]>([]);
+  const [doctorQueueFilter, setDoctorQueueFilter] = useState<DoctorQueueFilter>("active");
   const [queueLoading, setQueueLoading] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [error, setError] = useState("");
@@ -56,16 +69,31 @@ export function DashboardApp() {
     setToast(message); window.setTimeout(() => setToast(""), 2800);
   }, []);
 
+  const refreshFacility = useCallback(async () => {
+    if (!facilityId) return;
+    setFacilityLoading(true);
+    try { setFacility(await meditrustApi.getMyFacility()); }
+    catch (reason) { reportError(reason); }
+    finally { setFacilityLoading(false); }
+  }, [facilityId, reportError]);
+
+  useEffect(() => { void Promise.resolve().then(refreshFacility); }, [refreshFacility]);
+
   const refreshQueue = useCallback(async () => {
     if (!facilityId || !role || role === "pharmacy" || role === "lab") return;
     setQueueLoading(true); setError("");
     try {
-      const visits = await meditrustApi.listVisits(facilityId);
+      const statuses = role === "doctor"
+        ? doctorQueueFilter === "active" ? ["waiting", "vitals_done"] : [doctorQueueFilter]
+        : ["waiting"];
+      const results = await Promise.all(statuses.map((status) => meditrustApi.listVisits(facilityId, status)));
+      const visits = Array.from(new Map(results.flat().map((visit) => [visit.id, visit])).values())
+        .sort((left, right) => new Date(left.checked_in_at).getTime() - new Date(right.checked_in_at).getTime());
       setQueue(visits);
       setSelectedVisit((current) => current ? visits.find((visit) => visit.id === current.id) || null : null);
     } catch (reason) { reportError(reason); }
     finally { setQueueLoading(false); }
-  }, [facilityId, role, reportError]);
+  }, [doctorQueueFilter, facilityId, role, reportError]);
 
   useEffect(() => { void Promise.resolve().then(refreshQueue); }, [refreshQueue]);
 
@@ -86,17 +114,22 @@ export function DashboardApp() {
     {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="Close navigation" />}
     <aside className={`sidebar ${menuOpen ? "sidebar-open" : ""}`}>
       <div className="brand-row"><Image src="/meditrust360-logo-transparent.png" alt="MediTrust360" width={168} height={52} priority /><button className="sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><Icon name="x" /></button></div>
+      <div className="staff-facility-card">
+        <span className="staff-facility-icon"><Icon name="hospital" size={19} /></span>
+        <div><strong>{facility?.name || (facilityLoading ? "Loading facility…" : "Facility unavailable")}</strong><small>{facility ? `${titleCase(facility.type)}${facility.address ? ` · ${facility.address}` : ""}` : "Your assigned facility"}</small></div>
+        {facility?.status && <i className={facility.status === "active" ? "active" : ""}>{facility.status}</i>}
+      </div>
       <div className="role-badge"><span>{roleLabels[role]} workspace</span><small>{session.user.facility_staff.staff_code}</small></div>
       <nav className="nav-group" aria-label="Main navigation"><p className="nav-label">Workspace</p>{navItems.map((item) => <button key={item.label} className={`nav-item ${active === item.label ? "active" : ""}`} onClick={() => navigate(item.label)}><Icon name={item.icon} /><span>{item.label}</span>{item.label === "Visit queue" && queue.length > 0 && <b>{queue.length}</b>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="doctor-card"><div className="avatar avatar-dark">{initials}</div><div><strong>{session.user.name}</strong><span>{roleLabels[role]} · {session.user.facility_staff.staff_code}</span></div></div><button className="logout-button sidebar-logout" onClick={logout}>Sign out securely</button></div>
     </aside>
     <main className="main-content">
-      <header className="topbar role-topbar"><div><span className="topbar-role">{roleLabels[role]} workspace</span><strong>{session.user.name}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => void refreshQueue()} aria-label="Refresh visit queue"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
+      <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => { void refreshFacility(); void refreshQueue(); }} aria-label="Refresh workspace"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
       <div className="dashboard role-dashboard">
         {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
-        {active === "Overview" && <RoleOverview session={session} queue={queue} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
+        {active === "Overview" && <RoleOverview session={session} facility={facility} queue={queue} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
         {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onCheckedIn={(visit) => { setQueue((current) => [visit, ...current.filter((item) => item.id !== visit.id)]); notify(`${visit.patient.name} checked in`); }} onError={reportError} />}
-        {active === "Visit queue" && <VisitQueue role={role} visits={queue} loading={queueLoading} selected={selectedVisit} onSelect={setSelectedVisit} onRefresh={refreshQueue} onVisitChanged={(visit) => { setQueue((current) => visit.status === "waiting" ? current.map((item) => item.id === visit.id ? visit : item) : current.filter((item) => item.id !== visit.id)); setSelectedVisit(visit.status === "waiting" ? visit : null); notify(`Visit marked ${visit.status}`); }} onError={reportError} notify={notify} />}
+        {active === "Visit queue" && <VisitQueue role={role} statusFilter={doctorQueueFilter} onStatusFilterChange={setDoctorQueueFilter} visits={queue} loading={queueLoading} selected={selectedVisit} onSelect={setSelectedVisit} onRefresh={refreshQueue} onVisitChanged={(visit) => { const visibleStatuses = role === "doctor" ? doctorQueueFilter === "active" ? ["waiting", "vitals_done"] : [doctorQueueFilter] : ["waiting"]; const remainsVisible = visibleStatuses.includes(visit.status as DoctorQueueFilter); setQueue((current) => remainsVisible ? current.map((item) => item.id === visit.id ? visit : item) : current.filter((item) => item.id !== visit.id)); setSelectedVisit(remainsVisible ? visit : null); notify(`Visit marked ${visit.status}`); }} onError={reportError} notify={notify} />}
         {(role === "pharmacy" || role === "lab") && active === "Overview" && <ComingSoon role={role} />}
       </div>
     </main>
@@ -105,12 +138,12 @@ export function DashboardApp() {
   </div>;
 }
 
-function RoleOverview({ session, queue, loading, onNavigate, onSelect }: { session: Session; queue: Visit[]; loading: boolean; onNavigate: (label: string) => void; onSelect: (visit: Visit) => void }) {
+function RoleOverview({ session, facility, queue, loading, onNavigate, onSelect }: { session: Session; facility: Facility | null; queue: Visit[]; loading: boolean; onNavigate: (label: string) => void; onSelect: (visit: Visit) => void }) {
   const role = session.user.facility_staff.role;
   if (role === "pharmacy" || role === "lab") return null;
   const actionLabel = role === "reception" ? "Patient check-in" : "Visit queue";
-  return <><section className="welcome-row"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-NG", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good {dayPeriod()}, {firstName(session.user.name)}</h1><p className="subtext">{role === "reception" ? "Manage arrivals and keep today’s patient flow moving." : role === "nurse" ? "Review waiting patients and capture accurate triage observations." : "Review the clinical queue and continue patient care."}</p></div><button className="primary-button" onClick={() => onNavigate(actionLabel)}><Icon name={role === "reception" ? "userPlus" : "clock"} size={18} />{role === "reception" ? "Find & check in patient" : role === "nurse" ? "Open triage queue" : "Open consultation queue"}</button></section>
-    <section className="stats-grid role-stats"><article className="stat-card"><div className="stat-top"><span className="stat-icon blue"><Icon name="clock" /></span><span className="unread-chip">Live</span></div><strong>{loading ? "—" : queue.length}</strong><p>Patients waiting</p><span className="stat-note">Current facility queue</span></article><article className="stat-card"><div className="stat-top"><span className="stat-icon green"><Icon name="hospital" /></span></div><strong>{session.user.facility_staff.staff_code}</strong><p>Staff code</p><span className="stat-note">{roleLabels[role]} access</span></article><article className="stat-card"><div className="stat-top"><span className="stat-icon purple"><Icon name="check" /></span></div><strong>Active</strong><p>Secure session</p><span className="stat-note">Facility-scoped access</span></article></section>
+  return <><section className="welcome-row"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-NG", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good {dayPeriod()}, {firstName(session.user.name)}</h1><p className="subtext">{facility ? `${facility.name}${facility.address ? ` · ${facility.address}` : ""}` : role === "reception" ? "Manage arrivals and keep today’s patient flow moving." : role === "nurse" ? "Review waiting patients and capture accurate triage observations." : "Review the clinical queue and continue patient care."}</p></div><button className="primary-button" onClick={() => onNavigate(actionLabel)}><Icon name={role === "reception" ? "userPlus" : "clock"} size={18} />{role === "reception" ? "Find & check in patient" : role === "nurse" ? "Open triage queue" : "Open consultation queue"}</button></section>
+    <section className="stats-grid role-stats"><article className="stat-card"><div className="stat-top"><span className="stat-icon blue"><Icon name="clock" /></span><span className="unread-chip">Live</span></div><strong>{loading ? "—" : queue.length}</strong><p>Patients waiting</p><span className="stat-note">{facility?.name || "Current facility queue"}</span></article><article className="stat-card"><div className="stat-top"><span className="stat-icon green"><Icon name="hospital" /></span></div><strong>{session.user.facility_staff.staff_code}</strong><p>Staff code</p><span className="stat-note">{roleLabels[role]} access</span></article><article className="stat-card"><div className="stat-top"><span className="stat-icon purple"><Icon name="check" /></span></div><strong>{facility?.status ? titleCase(facility.status) : "Active"}</strong><p>Facility status</p><span className="stat-note">{facility ? titleCase(facility.type) : "Facility-scoped access"}</span></article></section>
     <section className="panel queue-preview"><div className="panel-heading"><div><h2>Waiting queue</h2><p>Patients checked in and ready for the next step</p></div><button className="text-button" onClick={() => onNavigate("Visit queue")}>View all <Icon name="arrow" size={16} /></button></div><div className="visit-list">{loading ? <LoadingState /> : queue.length ? queue.slice(0, 5).map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} onClick={() => onSelect(visit)} />) : <EmptyState title="No patients waiting" body="The queue is clear right now." />}</div></section></>;
 }
 
@@ -126,19 +159,20 @@ function PatientSearch({ role, facilityId, onCheckedIn, onError }: { role: Staff
   </section>;
 }
 
-function VisitQueue({ role, visits, loading, selected, onSelect, onRefresh, onVisitChanged, onError, notify }: { role: StaffRole; visits: Visit[]; loading: boolean; selected: Visit | null; onSelect: (visit: Visit | null) => void; onRefresh: () => Promise<void>; onVisitChanged: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
-  return <section className="role-workspace"><WorkspaceHeading eyebrow="Live patient flow" title="Visit queue" description={role === "reception" ? "Monitor checked-in patients and manage front-desk exceptions." : role === "nurse" ? "Select a waiting patient to record their vitals." : "Select a waiting patient to review and begin a clinical encounter."} action={<button className="secondary-button" onClick={() => void onRefresh()} disabled={loading}><Icon name="trend" size={17} />Refresh</button>} />
-    <div className="queue-workspace-grid"><div className="data-panel queue-list"><div className="data-toolbar"><strong>{visits.length} waiting</strong><span>Oldest first</span></div>{loading ? <LoadingState /> : visits.length ? visits.map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} selected={selected?.id === visit.id} onClick={() => onSelect(visit)} />) : <EmptyState title="No patients waiting" body="Newly checked-in patients will appear here." />}</div><div className="panel visit-detail-panel">{selected ? <VisitDetail key={selected.id} role={role} visit={selected} onVisitChanged={onVisitChanged} onError={onError} notify={notify} /> : <EmptyState title="Select a visit" body="Patient information and available actions will appear here." />}</div></div>
+function VisitQueue({ role, statusFilter, onStatusFilterChange, visits, loading, selected, onSelect, onRefresh, onVisitChanged, onError, notify }: { role: StaffRole; statusFilter: DoctorQueueFilter; onStatusFilterChange: (status: DoctorQueueFilter) => void; visits: Visit[]; loading: boolean; selected: Visit | null; onSelect: (visit: Visit | null) => void; onRefresh: () => Promise<void>; onVisitChanged: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const filterLabel = doctorQueueFilters.find((filter) => filter.value === statusFilter)?.label || "Queue";
+  return <section className="role-workspace"><WorkspaceHeading eyebrow="Live patient flow" title="Visit queue" description={role === "reception" ? "Monitor checked-in patients and manage front-desk exceptions." : role === "nurse" ? "Select a waiting patient to record their vitals." : "Review active visits or filter the queue by clinical status."} action={<div className="queue-toolbar-actions">{role === "doctor" && <label><span>Visit status</span><select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as DoctorQueueFilter)} disabled={loading}>{doctorQueueFilters.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}</select></label>}<button className="secondary-button" onClick={() => void onRefresh()} disabled={loading}><Icon name="trend" size={17} />Refresh</button></div>} />
+    <div className="queue-workspace-grid"><div className="data-panel queue-list"><div className="data-toolbar"><strong>{visits.length} {role === "doctor" ? filterLabel.toLowerCase() : "waiting"}</strong><span>Oldest first</span></div>{loading ? <LoadingState /> : visits.length ? visits.map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} selected={selected?.id === visit.id} onClick={() => onSelect(visit)} />) : <EmptyState title={`No ${role === "doctor" ? filterLabel.toLowerCase() : "waiting"} visits`} body="No visits match the selected status." />}</div><div className="panel visit-detail-panel">{selected ? <VisitDetail key={selected.id} role={role} visit={selected} onVisitChanged={onVisitChanged} onError={onError} notify={notify} /> : <EmptyState title="Select a visit" body="Patient information and available actions will appear here." />}</div></div>
   </section>;
 }
 
 function VisitDetail({ role, visit, onVisitChanged, onError, notify }: { role: StaffRole; visit: Visit; onVisitChanged: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   async function changeStatus(status: "cancelled" | "completed") { setBusy(true); try { onVisitChanged(await meditrustApi.updateVisitStatus(visit.id, status)); } catch (reason) { onError(reason); } finally { setBusy(false); } }
-  return <><div className="visit-patient-head"><PatientAvatar patient={visit.patient} large /><div><span className="record-status waiting">Waiting</span><h2>{visit.patient.name}</h2><p>{visit.patient.digital_health_id}</p></div></div><dl className="patient-facts"><div><dt>Age / sex</dt><dd>{ageFromDob(visit.patient.dob)} · {visit.patient.sex}</dd></div><div><dt>Checked in</dt><dd>{formatDate(visit.checked_in_at)}</dd></div><div><dt>Phone</dt><dd>{visit.patient.phone || "Not provided"}</dd></div></dl>
+  return <><div className="visit-patient-head"><PatientAvatar patient={visit.patient} large /><div><span className={`record-status ${visit.status}`}>{titleCase(visit.status)}</span><h2>{visit.patient.name}</h2><p>{visit.patient.digital_health_id}</p></div></div><dl className="patient-facts"><div><dt>Age / sex</dt><dd>{ageFromDob(visit.patient.dob)} · {visit.patient.sex}</dd></div><div><dt>Checked in</dt><dd>{formatDate(visit.checked_in_at)}</dd></div><div><dt>Phone</dt><dd>{visit.patient.phone || "Not provided"}</dd></div></dl>
     {role === "reception" && <div className="visit-actions"><p>Front desk actions</p><button className="danger-outline" disabled={busy} onClick={() => void changeStatus("cancelled")}>Cancel visit</button></div>}
     {role === "nurse" && <VitalsForm visit={visit} onError={onError} notify={notify} />}
-    {role === "doctor" && <DoctorWorkspace visit={visit} onComplete={() => void changeStatus("completed")} completing={busy} onError={onError} notify={notify} />}
+    {role === "doctor" && (visit.status === "completed" || visit.status === "cancelled" ? <div className="historical-visit-note"><Icon name={visit.status === "completed" ? "check" : "x"} /><strong>{titleCase(visit.status)} visit</strong><span>This visit is read-only and no longer accepts clinical actions.</span></div> : <DoctorWorkspace visit={visit} onComplete={() => void changeStatus("completed")} completing={busy} onError={onError} notify={notify} />)}
   </>;
 }
 
@@ -166,7 +200,19 @@ function EncounterEditor({ encounter, onChange, onError, notify }: { encounter: 
   const [busy, setBusy] = useState(false); const [prescription, setPrescription] = useState<Prescription | null>(null); const [labRequest, setLabRequest] = useState<LabRequest | null>(null);
   async function update(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); const data = new FormData(event.currentTarget); const values = { symptoms: String(data.get("symptoms")), assessment: String(data.get("assessment")), diagnosis: String(data.get("diagnosis")), notes: String(data.get("notes")) }; try { const updated = encounter.status === "draft" ? await meditrustApi.updateEncounter(encounter.id, values) : await meditrustApi.amendEncounter(encounter.id, values); onChange(updated); notify(encounter.status === "draft" ? "Draft saved" : "Amendment created"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
   async function finalize() { setBusy(true); try { onChange(await meditrustApi.finalizeEncounter(encounter.id)); notify("Encounter finalized"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
-  return <div className="encounter-editor"><form className="clinical-form" onSubmit={update}><div className="section-title compact"><h3>{encounter.status === "draft" ? "Encounter draft" : "Finalized encounter"}</h3><span className={`record-status ${encounter.status}`}>{encounter.status}</span></div><label>Symptoms<textarea name="symptoms" rows={2} defaultValue={encounter.symptoms || ""} required /></label><label>Assessment<textarea name="assessment" rows={2} defaultValue={encounter.assessment || ""} required /></label><label>Diagnosis<input name="diagnosis" defaultValue={encounter.diagnosis || ""} required /></label><label>Notes<textarea name="notes" rows={2} defaultValue={encounter.notes || ""} placeholder="Treatment plan and patient advice" /></label><div className="form-actions"><button className="secondary-button" disabled={busy}>{encounter.status === "draft" ? "Save draft" : "Create amendment"}</button>{encounter.status === "draft" && <button type="button" className="primary-button" disabled={busy} onClick={() => void finalize()}>Finalize encounter</button>}</div></form><div className="orders-grid"><PrescriptionForm encounterId={encounter.id} value={prescription} onCreated={setPrescription} onError={onError} notify={notify} /><LabOrderForm encounterId={encounter.id} value={labRequest} onCreated={setLabRequest} onError={onError} notify={notify} /></div></div>;
+  return <div className="encounter-editor">
+    <form className="clinical-form encounter-form" onSubmit={update}>
+      <div className="encounter-form-heading"><span><Icon name="file" size={18} /></span><div><p>Clinical documentation</p><h3>{encounter.status === "draft" ? "Encounter draft" : "Finalized encounter"}</h3></div><span className={`record-status ${encounter.status}`}>{encounter.status}</span></div>
+      <div className="encounter-field-grid"><label>Symptoms<textarea name="symptoms" rows={3} defaultValue={encounter.symptoms || ""} required /></label><label>Assessment<textarea name="assessment" rows={3} defaultValue={encounter.assessment || ""} required /></label></div>
+      <label>Diagnosis<input name="diagnosis" defaultValue={encounter.diagnosis || ""} required /></label>
+      <label>Clinical notes<textarea name="notes" rows={3} defaultValue={encounter.notes || ""} placeholder="Treatment plan, follow-up instructions and patient advice" /></label>
+      <div className="form-actions"><button className="secondary-button" disabled={busy}>{encounter.status === "draft" ? "Save draft" : "Create amendment"}</button>{encounter.status === "draft" && <button type="button" className="primary-button" disabled={busy} onClick={() => void finalize()}>Finalize encounter</button>}</div>
+    </form>
+    <section className="clinical-orders-section">
+      <div className="clinical-orders-heading"><span><Icon name="sparkles" size={18} /></span><div><p>Next steps</p><h3>Prescription & diagnostic orders</h3><small>Create the patient’s medication and laboratory plan after documenting the encounter.</small></div></div>
+      <div className="orders-grid"><PrescriptionForm encounterId={encounter.id} value={prescription} onCreated={setPrescription} onError={onError} notify={notify} /><LabOrderForm encounterId={encounter.id} value={labRequest} onCreated={setLabRequest} onError={onError} notify={notify} /></div>
+    </section>
+  </div>;
 }
 
 function PrescriptionForm({ encounterId, value, onCreated, onError, notify }: { encounterId: string; value: Prescription | null; onCreated: (value: Prescription) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
@@ -174,27 +220,105 @@ function PrescriptionForm({ encounterId, value, onCreated, onError, notify }: { 
   useEffect(() => { meditrustApi.directory("pharmacy").then(setFacilities).catch(onError); }, [onError]);
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); const data = new FormData(event.currentTarget); try { onCreated(await meditrustApi.createPrescription(encounterId, { medication_name: String(data.get("medication_name")), dosage: String(data.get("dosage")), frequency: String(data.get("frequency")), duration_days: Number(data.get("duration_days")), instructions: String(data.get("instructions")) })); notify("Prescription issued"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
   async function forward(id: string) { if (!selectedFacility) return; setBusy(true); try { onCreated(await meditrustApi.forwardPrescription(id, selectedFacility)); notify("Prescription forwarded to pharmacy"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
-  return <div className="order-card"><h4>Prescription</h4>{!value ? <form onSubmit={submit}><input name="medication_name" required placeholder="Medication name" /><div><input name="dosage" required placeholder="Dosage" /><input name="frequency" required placeholder="Frequency" /></div><input name="duration_days" type="number" min="1" required placeholder="Duration (days)" /><input name="instructions" placeholder="Instructions" /><button disabled={busy}>Issue prescription</button></form> : <div className="created-order"><strong>{value.medication_name}</strong><span>{value.dosage} · {value.frequency} · {value.duration_days} days</span>{value.forward_status ? <em>Forwarded · {value.forward_status}</em> : <><select value={selectedFacility} onChange={(event) => setSelectedFacility(event.target.value)}><option value="" disabled>Select pharmacy</option>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select><button disabled={busy || !selectedFacility} onClick={() => void forward(value.id)}>Forward</button></>}</div>}</div>;
+  return <div className="order-card prescription-card"><div className="order-card-heading"><span><Icon name="file" size={17} /></span><div><h4>Prescription</h4><p>Medication and dispensing instructions</p></div></div>{!value ? <form onSubmit={submit}><label>Medication<input name="medication_name" required placeholder="e.g. Amoxicillin" /></label><div><label>Dosage<input name="dosage" required placeholder="e.g. 500 mg" /></label><label>Frequency<input name="frequency" required placeholder="e.g. Twice daily" /></label></div><label>Duration<input name="duration_days" type="number" min="1" required placeholder="Number of days" /></label><label>Instructions<input name="instructions" placeholder="Additional instructions (optional)" /></label><button disabled={busy}>Issue prescription</button></form> : <div className="created-order"><strong>{value.medication_name}</strong><span>{value.dosage} · {value.frequency} · {value.duration_days} days</span>{value.forward_status ? <em>Forwarded · {value.forward_status}</em> : <><select value={selectedFacility} onChange={(event) => setSelectedFacility(event.target.value)}><option value="" disabled>Select pharmacy</option>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select><button disabled={busy || !selectedFacility} onClick={() => void forward(value.id)}>Forward to pharmacy</button></>}</div>}</div>;
 }
 
 function LabOrderForm({ encounterId, value, onCreated, onError, notify }: { encounterId: string; value: LabRequest | null; onCreated: (value: LabRequest) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
   const [facilities, setFacilities] = useState<Facility[]>([]); const [busy, setBusy] = useState(false); const [selectedFacility, setSelectedFacility] = useState("");
   useEffect(() => { meditrustApi.directory("lab").then(setFacilities).catch(onError); }, [onError]);
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); const data = new FormData(event.currentTarget); try { onCreated(await meditrustApi.createLabRequest(encounterId, String(data.get("test_name")))); notify("Lab request created"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); const data = new FormData(event.currentTarget); try { onCreated(await meditrustApi.createLabRequest(encounterId, String(data.get("test_name")), String(data.get("notes")))); notify("Lab request created"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
   async function forward(id: string) { if (!selectedFacility) return; setBusy(true); try { onCreated(await meditrustApi.forwardLabRequest(id, selectedFacility)); notify("Request forwarded to laboratory"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
-  return <div className="order-card"><h4>Laboratory request</h4>{!value ? <form onSubmit={submit}><input name="test_name" required placeholder="Test name" /><button disabled={busy}>Order test</button></form> : <div className="created-order"><strong>{value.test_name}</strong><span>Status · {value.status}</span>{value.forwarded_to_facility_id ? <em>Forwarded to laboratory</em> : <><select value={selectedFacility} onChange={(event) => setSelectedFacility(event.target.value)}><option value="" disabled>Select laboratory</option>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select><button disabled={busy || !selectedFacility} onClick={() => void forward(value.id)}>Forward</button></>}</div>}</div>;
+  return <div className="order-card laboratory-card"><div className="order-card-heading"><span><Icon name="hospital" size={17} /></span><div><h4>Laboratory request</h4><p>Diagnostic tests and investigations</p></div></div>{!value ? <form onSubmit={submit}><label>Test or investigation<input name="test_name" required placeholder="e.g. Malaria RDT" /></label><label>Notes<textarea name="notes" rows={3} required placeholder="Clinical context or instructions for the laboratory" /></label><button disabled={busy}>Create lab request</button></form> : <div className="created-order"><strong>{value.test_name}</strong><span>{value.notes || "No additional notes"}</span><span>Status · {titleCase(value.status)}</span>{value.forwarded_to_facility_id ? <em>Forwarded to laboratory</em> : <><select value={selectedFacility} onChange={(event) => setSelectedFacility(event.target.value)}><option value="" disabled>Select laboratory</option>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}</select><button disabled={busy || !selectedFacility} onClick={() => void forward(value.id)}>Forward to laboratory</button></>}</div>}</div>;
 }
 
 function Timeline({ items }: { items: TimelineItem[] }) {
-  return <div className="patient-timeline">{items.length ? items.map((item, index) => { const data = item.data as unknown as Record<string, unknown>; return <article key={`${item.type}-${item.at}-${index}`}><span className={`timeline-icon ${item.type}`}><Icon name={item.type === "vitals" ? "trend" : "file"} size={16} /></span><div><strong>{item.type.replace("_", " ")}</strong><small>{formatDate(item.at)}</small><p>{item.type === "encounter" ? String(data.diagnosis || data.assessment || "Clinical encounter") : item.type === "prescription" ? `${String(data.medication_name || "Medication")} · ${String(data.dosage || "")}` : item.type === "vitals" ? `BP ${String(data.blood_pressure_systolic)}/${String(data.blood_pressure_diastolic)} · ${String(data.temperature)} °C` : "Clinical record"}</p></div></article>; }) : <EmptyState title="No timeline entries" body="Clinical activity will appear here." />}</div>;
+  const [expanded, setExpanded] = useState<string | null>(null);
+  if (!items.length) return <div className="patient-timeline"><EmptyState title="No timeline entries" body="Clinical activity will appear here." /></div>;
+  return <div className="patient-timeline">{items.map((item, index) => {
+    const data = item.data as unknown as Record<string, unknown>;
+    const key = `${item.type}-${String(data.id || item.at)}-${index}`;
+    const open = expanded === key;
+    return <article className={`timeline-entry ${open ? "open" : ""}`} key={key}>
+      <button className="timeline-entry-button" type="button" aria-expanded={open} onClick={() => setExpanded(open ? null : key)}>
+        <span className={`timeline-icon ${item.type}`}><Icon name={timelineIcon(item.type)} size={16} /></span>
+        <span className="timeline-entry-copy"><span><strong>{timelineTitle(item.type)}</strong>{typeof data.status === "string" && <em className={`record-status ${data.status}`}>{titleCase(data.status)}</em>}</span><small>{formatDate(item.at)}</small><p>{timelineSummary(item.type, data)}</p></span>
+        <span className="timeline-expand-icon"><Icon name="chevron" size={16} /></span>
+      </button>
+      {open && <TimelineDetails item={item} />}
+    </article>;
+  })}</div>;
 }
 
-function VisitRow({ visit, position, selected, onClick }: { visit: Visit; position: number; selected?: boolean; onClick: () => void }) { return <button className={`visit-row ${selected ? "selected" : ""}`} onClick={onClick}><span className="queue-number">{position}</span><PatientAvatar patient={visit.patient} /><span><strong>{visit.patient.name}</strong><small>{visit.patient.digital_health_id} · {ageFromDob(visit.patient.dob)} yrs · {visit.patient.sex}</small></span><span className="wait-time"><strong>{formatTime(visit.checked_in_at)}</strong><small>Checked in</small></span><Icon name="chevron" size={17} /></button>; }
+function TimelineDetails({ item }: { item: TimelineItem }) {
+  const data = item.data as unknown as Record<string, unknown>;
+  if (item.type === "vitals") return <div className="timeline-details-grid vitals-details">
+    <TimelineField label="Blood pressure" value={`${displayValue(data.blood_pressure_systolic)}/${displayValue(data.blood_pressure_diastolic)} mmHg`} />
+    <TimelineField label="Temperature" value={`${displayValue(data.temperature)} °C`} />
+    <TimelineField label="Pulse" value={`${displayValue(data.pulse)} bpm`} />
+    <TimelineField label="Respiratory rate" value={`${displayValue(data.respiratory_rate)} /min`} />
+    <TimelineField label="SpO₂" value={`${displayValue(data.spo2)}%`} />
+    <TimelineField label="Weight / height" value={`${displayValue(data.weight)} kg · ${displayValue(data.height)} cm`} />
+  </div>;
+
+  if (item.type === "encounter") {
+    const prescriptions = Array.isArray(data.prescriptions) ? data.prescriptions as Record<string, unknown>[] : [];
+    return <div className="timeline-expanded-content">
+      <div className="timeline-details-grid"><TimelineField label="Symptoms" value={displayValue(data.symptoms)} wide /><TimelineField label="Assessment" value={displayValue(data.assessment)} wide /><TimelineField label="Diagnosis" value={displayValue(data.diagnosis)} /><TimelineField label="Notes" value={displayValue(data.notes)} wide /><TimelineField label="Finalized" value={data.finalized_at ? formatDate(String(data.finalized_at)) : "Not finalized"} /></div>
+      {prescriptions.length > 0 && <div className="timeline-nested-orders"><strong>Prescriptions from this encounter</strong>{prescriptions.map((prescription, index) => <div key={String(prescription.id || index)}><span><b>{displayValue(prescription.medication_name)}</b><small>{displayValue(prescription.dosage)} · {displayValue(prescription.frequency)} · {displayValue(prescription.duration_days)} days</small></span><em>{displayValue(prescription.forward_status || prescription.status)}</em></div>)}</div>}
+    </div>;
+  }
+
+  if (item.type === "prescription") return <div className="timeline-details-grid">
+    <TimelineField label="Medication" value={displayValue(data.medication_name)} />
+    <TimelineField label="Dosage" value={displayValue(data.dosage)} />
+    <TimelineField label="Frequency" value={displayValue(data.frequency)} />
+    <TimelineField label="Duration" value={`${displayValue(data.duration_days)} days`} />
+    <TimelineField label="Instructions" value={displayValue(data.instructions)} wide />
+    <TimelineField label="Forward status" value={displayValue(data.forward_status)} />
+  </div>;
+
+  if (item.type === "lab_request") return <div className="timeline-details-grid">
+    <TimelineField label="Test or investigation" value={displayValue(data.test_name)} wide />
+    <TimelineField label="Laboratory notes" value={displayValue(data.notes)} wide />
+    <TimelineField label="Status" value={displayValue(data.status)} />
+    <TimelineField label="Forwarded" value={data.forwarded_to_facility_id ? "Yes" : "Not yet"} />
+  </div>;
+
+  return <div className="timeline-details-grid">{Object.entries(data).filter(([, value]) => typeof value !== "object").slice(0, 8).map(([label, value]) => <TimelineField key={label} label={titleCase(label)} value={displayValue(value)} />)}</div>;
+}
+
+function TimelineField({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return <div className={wide ? "wide" : ""}><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function timelineTitle(type: string) {
+  return type === "lab_request" ? "Laboratory request" : type === "prescription" ? "Prescription" : type === "encounter" ? "Clinical encounter" : type === "vitals" ? "Vital signs" : titleCase(type);
+}
+
+function timelineSummary(type: string, data: Record<string, unknown>) {
+  if (type === "lab_request") return `${displayValue(data.test_name)}${data.notes ? ` · ${displayValue(data.notes)}` : ""}`;
+  if (type === "prescription") return `${displayValue(data.medication_name)} · ${displayValue(data.dosage)} · ${displayValue(data.frequency)}`;
+  if (type === "encounter") return displayValue(data.diagnosis || data.assessment || "Clinical encounter");
+  if (type === "vitals") return `BP ${displayValue(data.blood_pressure_systolic)}/${displayValue(data.blood_pressure_diastolic)} · ${displayValue(data.temperature)} °C · SpO₂ ${displayValue(data.spo2)}%`;
+  return "Clinical record";
+}
+
+function timelineIcon(type: string): IconName {
+  return type === "vitals" ? "trend" : type === "lab_request" ? "hospital" : "file";
+}
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "Not provided";
+  return String(value).replace(/_/g, " ");
+}
+
+function VisitRow({ visit, position, selected, onClick }: { visit: Visit; position: number; selected?: boolean; onClick: () => void }) { return <button className={`visit-row ${selected ? "selected" : ""}`} onClick={onClick}><span className="queue-number">{position}</span><PatientAvatar patient={visit.patient} /><span><strong>{visit.patient.name}</strong><small>{visit.patient.digital_health_id} · {ageFromDob(visit.patient.dob)} yrs · {visit.patient.sex} · {titleCase(visit.status)}</small></span><span className="wait-time"><strong>{formatTime(visit.checked_in_at)}</strong><small>Checked in</small></span><Icon name="chevron" size={17} /></button>; }
 function PatientAvatar({ patient, large = false }: { patient: PatientSummary; large?: boolean }) { return <div className={`avatar blue ${large ? "large" : ""}`}>{patient.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>; }
 function WorkspaceHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) { return <header className="workspace-header role-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>{action}</header>; }
 function LoadingState() { return <div className="role-loading"><span className="spinner" />Loading current records…</div>; }
 function EmptyState({ title, body }: { title: string; body: string }) { return <div className="empty-state role-empty"><Icon name="hospital" /><strong>{title}</strong><span>{body}</span></div>; }
 function ComingSoon({ role }: { role: "pharmacy" | "lab" }) { return <section className="panel coming-soon"><span className="stat-icon blue"><Icon name={role === "pharmacy" ? "file" : "hospital"} /></span><h1>{roleLabels[role]} workspace</h1><p>The authenticated role shell is ready. The incoming {role === "pharmacy" ? "prescription" : "laboratory request"} queue will be connected when its API contract is available.</p></section>; }
 function firstName(name: string) { return name.replace(/^Dr\.\s*/i, "").split(" ")[0]; }
+function titleCase(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function dayPeriod() { const hour = new Date().getHours(); return hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"; }
 function formatTime(value: string) { return new Intl.DateTimeFormat("en-NG", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }

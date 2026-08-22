@@ -99,16 +99,20 @@ export type LabRequest = {
   facility_id: string;
   forwarded_to_facility_id: string | null;
   test_name: string;
+  notes?: string | null;
   status: string;
   ordered_at: string;
 };
 
 export type Facility = {
   id: string;
-  type: "pharmacy" | "lab" | string;
+  type: "hospital" | "pharmacy" | "lab" | string;
   name: string;
-  address: string;
+  address: string | null;
   phone: string | null;
+  email?: string | null;
+  logo_url?: string | null;
+  status?: "active" | string;
 };
 
 export type TimelineItem = {
@@ -148,6 +152,7 @@ function json(method: "POST" | "PATCH", body?: unknown): RequestInit {
 }
 
 export const meditrustApi = {
+  getMyFacility: () => api<Facility>("/v1/facilities/me"),
   searchPatients: (query: string) => api<PatientSummary[]>(`/v1/patients/search?query=${encodeURIComponent(query)}`),
   listVisits: async (facilityId: string, status = "waiting") => {
     const result = await api<{ data: Visit[] }>(`/v1/facilities/${encodeURIComponent(facilityId)}/visits?status=${encodeURIComponent(status)}`);
@@ -165,7 +170,7 @@ export const meditrustApi = {
   amendEncounter: (encounterId: string, values: Partial<Pick<Encounter, "symptoms" | "assessment" | "diagnosis" | "notes">>) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}/amend`, json("POST", values)),
   createPrescription: (encounterId: string, values: Omit<Prescription, "id" | "encounter_id" | "patient_id" | "doctor_id" | "status" | "issued_at" | "forwarded_to_facility_id" | "forward_status">) => api<Prescription>(`/v1/encounters/${encodeURIComponent(encounterId)}/prescriptions`, json("POST", values)),
   forwardPrescription: (prescriptionId: string, pharmacyFacilityId: string) => api<Prescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/forward`, json("POST", { pharmacy_facility_id: pharmacyFacilityId })),
-  createLabRequest: (encounterId: string, testName: string) => api<LabRequest>(`/v1/encounters/${encodeURIComponent(encounterId)}/lab-requests`, json("POST", { test_name: testName })),
+  createLabRequest: (encounterId: string, testName: string, notes: string) => api<LabRequest>(`/v1/encounters/${encodeURIComponent(encounterId)}/lab-requests`, json("POST", { test_name: testName, notes })),
   forwardLabRequest: (labRequestId: string, labFacilityId: string) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/forward`, json("POST", { lab_facility_id: labFacilityId })),
   directory: (type: "pharmacy" | "lab") => api<Facility[]>(`/v1/facilities/directory?type=${type}`),
 };

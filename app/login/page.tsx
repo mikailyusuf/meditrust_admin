@@ -15,6 +15,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [forgot, setForgot] = useState(false);
   const [sent, setSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resetComplete, setResetComplete] = useState(false);
+  const [notice, setNotice] = useState("");
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,9 +44,64 @@ export default function LoginPage() {
     }
   }
 
-  function sendReset(event: FormEvent<HTMLFormElement>) {
+  async function sendReset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSent(true);
+    setError("");
+    setNotice("");
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+      if (!response.ok || !payload?.success) throw new Error(payload?.message || "Unable to send a reset code.");
+      setEmail(email.trim().toLowerCase());
+      setNotice(payload.message || "If an account exists for that email, a password reset code has been sent.");
+      setSent(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to send a reset code.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!/^\d{6}$/.test(otp)) { setError("Enter the six-digit reset code sent to your email."); return; }
+    if (newPassword.length < 8) { setError("Your new password must contain at least 8 characters."); return; }
+    if (newPassword !== passwordConfirmation) { setError("The new passwords do not match."); return; }
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp, password: newPassword, password_confirmation: passwordConfirmation }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+      if (!response.ok || !payload?.success) throw new Error(payload?.message || "Unable to reset your password.");
+      setNotice(payload.message || "Password reset successful.");
+      setResetComplete(true);
+      setNewPassword("");
+      setPasswordConfirmation("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to reset your password.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function closeRecovery() {
+    setForgot(false);
+    setSent(false);
+    setResetComplete(false);
+    setOtp("");
+    setNewPassword("");
+    setPasswordConfirmation("");
+    setError("");
+    setNotice("");
   }
 
   return (
@@ -66,15 +127,28 @@ export default function LoginPage() {
             <form onSubmit={signIn} className="login-form">
               <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@clinic.com" required /></label>
               <label>Password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div></label>
-              <div className="login-options"><label className="check-label"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /> Keep me signed in</label><button type="button" onClick={() => { setForgot(true); setSent(false); }}>Forgot password?</button></div>
+              <div className="login-options"><label className="check-label"><input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} /> Keep me signed in</label><button type="button" onClick={() => { setForgot(true); setSent(false); setResetComplete(false); setError(""); }}>Forgot password?</button></div>
               {error && <div className="login-error" role="alert">{error}</div>}
               <button className="login-submit" disabled={loading}>{loading ? <><span className="spinner" /> Signing in…</> : <>Sign in <span>→</span></>}</button>
             </form>
             <div className="demo-account"><strong>Facility staff</strong><p>Reception, nursing and doctor accounts use the same secure sign-in.</p></div>
           </> : <>
-            <button className="login-back" onClick={() => setForgot(false)}>← Back to sign in</button>
-            <div className="login-heading"><span>Account recovery</span><h2>Reset your password</h2><p>We’ll send a secure reset link to your registered email.</p></div>
-            {!sent ? <form className="login-form" onSubmit={sendReset}><label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><button className="login-submit">Send reset link <span>→</span></button></form> : <div className="reset-success"><i>✓</i><h3>Check your inbox</h3><p>A reset link was sent to <strong>{email}</strong>.</p><button onClick={() => setSent(false)}>Send again</button></div>}
+            <button className="login-back" onClick={closeRecovery}>← Back to sign in</button>
+            {!sent ? <>
+              <div className="login-heading"><span>Account recovery</span><h2>Reset your password</h2><p>We’ll send a six-digit reset code to your registered email.</p></div>
+              <form className="login-form" onSubmit={sendReset}><label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={loading} /></label>{error && <div className="login-error" role="alert">{error}</div>}<button className="login-submit" disabled={loading}>{loading ? <><span className="spinner" /> Sending code…</> : <>Send reset code <span>→</span></>}</button></form>
+            </> : resetComplete ? <div className="reset-success"><i>✓</i><h3>Password reset successful</h3><p>{notice} You can now sign in with your new password.</p><button onClick={closeRecovery}>Return to sign in</button></div> : <>
+              <div className="login-heading"><span>Verify reset code</span><h2>Create a new password</h2><p>Enter the code sent to <strong>{email}</strong>.</p></div>
+              {notice && <div className="reset-notice" role="status">{notice}</div>}
+              <form className="login-form" onSubmit={resetPassword}>
+                <label>Six-digit code<input value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" required disabled={loading} /></label>
+                <label>New password<div className="password-field"><input type={showNewPassword ? "text" : "password"} autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required disabled={loading} /><button type="button" onClick={() => setShowNewPassword((value) => !value)}>{showNewPassword ? "Hide" : "Show"}</button></div></label>
+                <label>Confirm new password<input type={showNewPassword ? "text" : "password"} autoComplete="new-password" minLength={8} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required disabled={loading} /></label>
+                {error && <div className="login-error" role="alert">{error}</div>}
+                <button className="login-submit" disabled={loading}>{loading ? <><span className="spinner" /> Resetting password…</> : <>Reset password <span>→</span></>}</button>
+                <button className="reset-text-button" type="button" disabled={loading} onClick={() => { setSent(false); setOtp(""); setError(""); setNotice(""); }}>Use a different email</button>
+              </form>
+            </>}
           </>}
           <p className="login-support">Need help? <a href="mailto:support@meditrust360.com">Contact support</a></p>
         </div>
