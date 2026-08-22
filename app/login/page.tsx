@@ -34,7 +34,7 @@ export default function LoginPage() {
       });
       const payload = await response.json().catch(() => null) as { success?: boolean; message?: string; data?: { user: AuthUser } } | null;
       if (!response.ok || !payload?.success || !payload.data?.user) throw new Error(payload?.message || "Unable to sign in.");
-      const supportedRoles = ["reception", "nurse", "doctor", "pharmacy", "lab"];
+      const supportedRoles = ["reception", "nurse", "doctor", "pharmacy", "pharmacist", "lab", "lab_tech"];
       if (!payload.data.user.facility_staff || !supportedRoles.includes(payload.data.user.facility_staff.role)) throw new Error("This account is not linked to a supported facility staff workspace.");
       saveSession({ user: payload.data.user }, remember);
       router.replace("/");

@@ -1,4 +1,4 @@
-export type StaffRole = "reception" | "nurse" | "doctor" | "pharmacy" | "lab";
+export type StaffRole = "reception" | "nurse" | "doctor" | "pharmacy" | "pharmacist" | "lab" | "lab_tech";
 
 export type FacilityStaff = {
   role: StaffRole;
@@ -102,6 +102,36 @@ export type LabRequest = {
   notes?: string | null;
   status: string;
   ordered_at: string;
+  doctor?: Pick<AuthUser, "id" | "name" | "email" | "phone">;
+  facility?: Pick<Facility, "id" | "type" | "name" | "address" | "phone">;
+};
+
+export type PaginationMeta = {
+  current_page: number;
+  from: number | null;
+  last_page: number;
+  per_page: number;
+  to: number | null;
+  total: number;
+};
+
+export type Paginated<T> = {
+  data: T[];
+  links: { first: string | null; last: string | null; prev: string | null; next: string | null };
+  meta: PaginationMeta;
+};
+
+export type UploadedFile = {
+  public_id: string;
+  url: string;
+  format?: string;
+  bytes?: number;
+};
+
+export type LabResultPayload = {
+  result_text: string;
+  values: Record<string, string>;
+  file_urls: string[];
 };
 
 export type Facility = {
@@ -113,6 +143,11 @@ export type Facility = {
   email?: string | null;
   logo_url?: string | null;
   status?: "active" | string;
+};
+
+export type FacilityPrescription = Prescription & {
+  doctor?: Pick<AuthUser, "id" | "name" | "email" | "phone">;
+  facility?: Pick<Facility, "id" | "type" | "name" | "address" | "phone">;
 };
 
 export type TimelineItem = {
@@ -131,11 +166,12 @@ export class ApiError extends Error {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`/api/backend${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.body && !isFormData ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
     cache: "no-store",
@@ -172,6 +208,16 @@ export const meditrustApi = {
   forwardPrescription: (prescriptionId: string, pharmacyFacilityId: string) => api<Prescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/forward`, json("POST", { pharmacy_facility_id: pharmacyFacilityId })),
   createLabRequest: (encounterId: string, testName: string, notes: string) => api<LabRequest>(`/v1/encounters/${encodeURIComponent(encounterId)}/lab-requests`, json("POST", { test_name: testName, notes })),
   forwardLabRequest: (labRequestId: string, labFacilityId: string) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/forward`, json("POST", { lab_facility_id: labFacilityId })),
+  listFacilityLabRequests: (facilityId: string, page: number, perPage = 20) => api<Paginated<LabRequest>>(`/v1/facilities/${encodeURIComponent(facilityId)}/lab-requests?page=${page}&per_page=${perPage}`),
+  submitLabResult: (labRequestId: string, payload: LabResultPayload) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/result`, json("POST", payload)),
+  uploadFile: (file: File, folder = "lab-results") => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("folder", folder);
+    return api<UploadedFile>("/v1/uploads", { method: "POST", body });
+  },
+  listFacilityPrescriptions: (facilityId: string, page: number, perPage = 20) => api<Paginated<FacilityPrescription>>(`/v1/facilities/${encodeURIComponent(facilityId)}/prescriptions?page=${page}&per_page=${perPage}`),
+  dispensePrescription: (prescriptionId: string) => api<FacilityPrescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/dispense`, json("PATCH")),
   directory: (type: "pharmacy" | "lab") => api<Facility[]>(`/v1/facilities/directory?type=${type}`),
 };
 

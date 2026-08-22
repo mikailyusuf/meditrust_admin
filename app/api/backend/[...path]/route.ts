@@ -10,7 +10,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   const { path } = await context.params;
   const sourceUrl = new URL(request.url);
   const target = `${API_BASE_URL}/${path.map(encodeURIComponent).join("/")}${sourceUrl.search}`;
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer();
 
   try {
     const backend = await fetch(target, {
@@ -20,7 +20,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
         Authorization: `Bearer ${token}`,
         ...(request.headers.get("content-type") ? { "Content-Type": request.headers.get("content-type")! } : {}),
       },
-      body: body || undefined,
+      body,
       cache: "no-store",
     });
     const responseBody = await backend.text();
