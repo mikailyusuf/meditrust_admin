@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   ApiError, ageFromDob, clearSession, formatDate, loadSession, meditrustApi,
-  type Encounter, type Facility, type LabRequest, type PatientSummary,
+  type AiDiagnosisSuggestion, type Appointment, type Encounter, type Facility, type LabRequest, type PatientSummary,
   type Prescription, type Session, type StaffRole, type TimelineItem,
   type Visit, type Vitals,
 } from "../lib/meditrust";
@@ -27,7 +27,7 @@ const doctorQueueFilters: { value: DoctorQueueFilter; label: string }[] = [
 const navigation: Record<StaffRole, NavItem[]> = {
   reception: [{ label: "Overview", icon: "grid" }, { label: "Patient check-in", icon: "userPlus" }, { label: "Visit queue", icon: "clock" }],
   nurse: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }],
-  doctor: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }, { label: "Patient search", icon: "search" }],
+  doctor: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }, { label: "Appointments", icon: "calendar" }, { label: "Patient search", icon: "search" }],
   pharmacy: [{ label: "Overview", icon: "grid" }],
   pharmacist: [{ label: "Overview", icon: "grid" }],
   lab: [{ label: "Overview", icon: "grid" }],
@@ -48,6 +48,8 @@ export function DashboardApp() {
   const [doctorQueueFilter, setDoctorQueueFilter] = useState<DoctorQueueFilter>("active");
   const [queueLoading, setQueueLoading] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
 
@@ -100,6 +102,16 @@ export function DashboardApp() {
 
   useEffect(() => { void Promise.resolve().then(refreshQueue); }, [refreshQueue]);
 
+  const refreshAppointments = useCallback(async () => {
+    if (role !== "doctor") return;
+    setAppointmentsLoading(true); setError("");
+    try { setAppointments(await meditrustApi.getDoctorAppointments()); }
+    catch (reason) { reportError(reason); }
+    finally { setAppointmentsLoading(false); }
+  }, [role, reportError]);
+
+  useEffect(() => { void Promise.resolve().then(refreshAppointments); }, [refreshAppointments]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     clearSession(); router.replace("/login");
@@ -127,11 +139,12 @@ export function DashboardApp() {
       <div className="sidebar-bottom"><div className="doctor-card"><div className="avatar avatar-dark">{initials}</div><div><strong>{session.user.name}</strong><span>{roleLabels[role]} · {session.user.facility_staff.staff_code}</span></div></div><button className="logout-button sidebar-logout" onClick={logout}>Sign out securely</button></div>
     </aside>
     <main className="main-content">
-      <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => { void refreshFacility(); void refreshQueue(); }} aria-label="Refresh workspace"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
+      <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => { void refreshFacility(); void refreshQueue(); void refreshAppointments(); }} aria-label="Refresh workspace"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
       <div className="dashboard role-dashboard">
         {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
         {active === "Overview" && !isPharmacyRole(role) && !isLabRole(role) && <RoleOverview session={session} facility={facility} queue={queue} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
         {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onCheckedIn={(visit) => { setQueue((current) => [visit, ...current.filter((item) => item.id !== visit.id)]); notify(`${visit.patient.name} checked in`); }} onError={reportError} />}
+        {active === "Appointments" && role === "doctor" && <AppointmentsPanel appointments={appointments} loading={appointmentsLoading} onRefresh={refreshAppointments} />}
         {active === "Visit queue" && <VisitQueue role={role} statusFilter={doctorQueueFilter} onStatusFilterChange={setDoctorQueueFilter} visits={queue} loading={queueLoading} selected={selectedVisit} onSelect={setSelectedVisit} onRefresh={refreshQueue} onVisitChanged={(visit) => { const visibleStatuses = role === "doctor" ? doctorQueueFilter === "active" ? ["waiting", "vitals_done"] : [doctorQueueFilter] : ["waiting"]; const remainsVisible = visibleStatuses.includes(visit.status as DoctorQueueFilter); setQueue((current) => remainsVisible ? current.map((item) => item.id === visit.id ? visit : item) : current.filter((item) => item.id !== visit.id)); setSelectedVisit(remainsVisible ? visit : null); notify(`Visit marked ${visit.status}`); }} onError={reportError} notify={notify} />}
         {isLabRole(role) && active === "Overview" && <LabTechWorkspace facilityId={facilityId} onError={reportError} notify={notify} />}
         {isPharmacyRole(role) && active === "Overview" && <PharmacyWorkspace facilityId={facilityId} onError={reportError} notify={notify} />}
@@ -168,6 +181,42 @@ function VisitQueue({ role, statusFilter, onStatusFilterChange, visits, loading,
   return <section className="role-workspace"><WorkspaceHeading eyebrow="Live patient flow" title="Visit queue" description={role === "reception" ? "Monitor checked-in patients and manage front-desk exceptions." : role === "nurse" ? "Select a waiting patient to record their vitals." : "Review active visits or filter the queue by clinical status."} action={<div className="queue-toolbar-actions">{role === "doctor" && <label><span>Visit status</span><select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as DoctorQueueFilter)} disabled={loading}>{doctorQueueFilters.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}</select></label>}<button className="secondary-button" onClick={() => void onRefresh()} disabled={loading}><Icon name="trend" size={17} />Refresh</button></div>} />
     <div className="queue-workspace-grid"><div className="data-panel queue-list"><div className="data-toolbar"><strong>{visits.length} {role === "doctor" ? filterLabel.toLowerCase() : "waiting"}</strong><span>Oldest first</span></div>{loading ? <LoadingState /> : visits.length ? visits.map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} selected={selected?.id === visit.id} onClick={() => onSelect(visit)} />) : <EmptyState title={`No ${role === "doctor" ? filterLabel.toLowerCase() : "waiting"} visits`} body="No visits match the selected status." />}</div><div className="panel visit-detail-panel">{selected ? <VisitDetail key={selected.id} role={role} visit={selected} onVisitChanged={onVisitChanged} onError={onError} notify={notify} /> : <EmptyState title="Select a visit" body="Patient information and available actions will appear here." />}</div></div>
   </section>;
+}
+
+function AppointmentsPanel({ appointments, loading, onRefresh }: { appointments: Appointment[]; loading: boolean; onRefresh: () => Promise<void> }) {
+  const [selected, setSelected] = useState<Appointment | null>(null);
+  return <section className="role-workspace">
+    <WorkspaceHeading eyebrow="Consultations" title="Appointments" description="Appointments scheduled with you across your facilities." action={<button className="secondary-button" onClick={() => void onRefresh()} disabled={loading}><Icon name="trend" size={17} />Refresh</button>} />
+    <div className="queue-workspace-grid">
+      <div className="data-panel">
+        <div className="data-toolbar"><strong>{appointments.length} appointments</strong><span>Upcoming first</span></div>
+        <div className="data-table">{loading ? <LoadingState /> : appointments.length ? appointments.map((appointment) => <button key={appointment.id} className={`data-row appointment-data-row ${selected?.id === appointment.id ? "highlighted" : ""}`} onClick={() => setSelected(appointment)}>
+          <span className="data-time"><strong>{formatTime(appointment.scheduled_at)}</strong><small>{formatShortDate(appointment.scheduled_at)}</small></span>
+          <PatientAvatar patient={appointment.patient} />
+          <span><strong>{appointment.patient.name}</strong><small>{appointment.patient.digital_health_id} · {ageFromDob(appointment.patient.dob)} yrs</small></span>
+          <span><strong>{appointment.facility.name}</strong><small>{titleCase(appointment.type)}</small></span>
+          <em className={`record-status ${appointment.status}`}>{titleCase(appointment.status)}</em>
+          <Icon name="chevron" />
+        </button>) : <EmptyState title="No appointments" body="You have no scheduled appointments yet." />}</div>
+      </div>
+      <div className="panel visit-detail-panel">{selected ? <AppointmentDetail appointment={selected} /> : <EmptyState title="Select an appointment" body="Appointment and patient information will appear here." />}</div>
+    </div>
+  </section>;
+}
+
+function AppointmentDetail({ appointment }: { appointment: Appointment }) {
+  const patient = appointment.patient;
+  return <><div className="visit-patient-head"><PatientAvatar patient={patient} large /><div><span className={`record-status ${appointment.status}`}>{titleCase(appointment.status)}</span><h2>{patient.name}</h2><p>{patient.digital_health_id}</p></div></div>
+    <dl className="patient-facts">
+      <div><dt>Scheduled for</dt><dd>{formatDate(appointment.scheduled_at)}</dd></div>
+      <div><dt>Type</dt><dd>{titleCase(appointment.type)}</dd></div>
+      <div><dt>Facility</dt><dd>{appointment.facility.name}</dd></div>
+      <div><dt>Age / sex</dt><dd>{ageFromDob(patient.dob)} · {patient.sex}</dd></div>
+      <div><dt>Blood group</dt><dd>{patient.blood_group || "Not provided"}</dd></div>
+      <div><dt>Fee</dt><dd>{appointment.fee ? `₦${Number(appointment.fee).toLocaleString()}` : "Not set"}</dd></div>
+      <div><dt>Notes</dt><dd>{appointment.notes || "No additional notes"}</dd></div>
+    </dl>
+  </>;
 }
 
 function VisitDetail({ role, visit, onVisitChanged, onError, notify }: { role: StaffRole; visit: Visit; onVisitChanged: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
@@ -237,9 +286,27 @@ function LabOrderForm({ encounterId, value, onCreated, onError, notify }: { enco
 
 function Timeline({ items }: { items: TimelineItem[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, AiDiagnosisSuggestion>>({});
+  const [aiLoadingId, setAiLoadingId] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<{ encounterId: string; message: string } | null>(null);
+
+  async function requestAiDiagnosis(encounterId: string) {
+    setAiLoadingId(encounterId);
+    setAiError(null);
+    try {
+      const suggestion = await meditrustApi.getAiDiagnosisSuggestion(encounterId);
+      setAiSuggestions((current) => ({ ...current, [encounterId]: suggestion }));
+    } catch (reason) {
+      setAiError({ encounterId, message: reason instanceof Error ? reason.message : "Unable to generate the AI suggestion." });
+    } finally {
+      setAiLoadingId(null);
+    }
+  }
+
   if (!items.length) return <div className="patient-timeline"><EmptyState title="No timeline entries" body="Clinical activity will appear here." /></div>;
   return <div className="patient-timeline">{items.map((item, index) => {
     const data = item.data as unknown as Record<string, unknown>;
+    const encounterId = item.type === "encounter" && typeof data.id === "string" ? data.id : "";
     const key = `${item.type}-${String(data.id || item.at)}-${index}`;
     const open = expanded === key;
     return <article className={`timeline-entry ${open ? "open" : ""}`} key={key}>
@@ -248,12 +315,12 @@ function Timeline({ items }: { items: TimelineItem[] }) {
         <span className="timeline-entry-copy"><span><strong>{timelineTitle(item.type)}</strong>{typeof data.status === "string" && <em className={`record-status ${data.status}`}>{titleCase(data.status)}</em>}</span><small>{formatDate(item.at)}</small><p>{timelineSummary(item.type, data)}</p></span>
         <span className="timeline-expand-icon"><Icon name="chevron" size={16} /></span>
       </button>
-      {open && <TimelineDetails item={item} />}
+      {open && <TimelineDetails item={item} aiSuggestion={encounterId ? aiSuggestions[encounterId] : undefined} aiLoading={aiLoadingId === encounterId} aiError={aiError?.encounterId === encounterId ? aiError.message : ""} onRequestAi={requestAiDiagnosis} />}
     </article>;
   })}</div>;
 }
 
-function TimelineDetails({ item }: { item: TimelineItem }) {
+function TimelineDetails({ item, aiSuggestion, aiLoading, aiError, onRequestAi }: { item: TimelineItem; aiSuggestion?: AiDiagnosisSuggestion; aiLoading: boolean; aiError: string; onRequestAi: (encounterId: string) => Promise<void> }) {
   const data = item.data as unknown as Record<string, unknown>;
   if (item.type === "vitals") return <div className="timeline-details-grid vitals-details">
     <TimelineField label="Blood pressure" value={`${displayValue(data.blood_pressure_systolic)}/${displayValue(data.blood_pressure_diastolic)} mmHg`} />
@@ -269,6 +336,7 @@ function TimelineDetails({ item }: { item: TimelineItem }) {
     return <div className="timeline-expanded-content">
       <div className="timeline-details-grid"><TimelineField label="Symptoms" value={displayValue(data.symptoms)} wide /><TimelineField label="Assessment" value={displayValue(data.assessment)} wide /><TimelineField label="Diagnosis" value={displayValue(data.diagnosis)} /><TimelineField label="Notes" value={displayValue(data.notes)} wide /><TimelineField label="Finalized" value={data.finalized_at ? formatDate(String(data.finalized_at)) : "Not finalized"} /></div>
       {prescriptions.length > 0 && <div className="timeline-nested-orders"><strong>Prescriptions from this encounter</strong>{prescriptions.map((prescription, index) => <div key={String(prescription.id || index)}><span><b>{displayValue(prescription.medication_name)}</b><small>{displayValue(prescription.dosage)} · {displayValue(prescription.frequency)} · {displayValue(prescription.duration_days)} days</small></span><em>{displayValue(prescription.forward_status || prescription.status)}</em></div>)}</div>}
+      {typeof data.id === "string" && <AiDiagnosisPanel encounterId={data.id} suggestion={aiSuggestion} loading={aiLoading} error={aiError} onRequest={onRequestAi} />}
     </div>;
   }
 
@@ -289,6 +357,34 @@ function TimelineDetails({ item }: { item: TimelineItem }) {
   </div>;
 
   return <div className="timeline-details-grid">{Object.entries(data).filter(([, value]) => typeof value !== "object").slice(0, 8).map(([label, value]) => <TimelineField key={label} label={titleCase(label)} value={displayValue(value)} />)}</div>;
+}
+
+function AiDiagnosisPanel({ encounterId, suggestion, loading, error, onRequest }: { encounterId: string; suggestion?: AiDiagnosisSuggestion; loading: boolean; error: string; onRequest: (encounterId: string) => Promise<void> }) {
+  return <section className="ai-diagnosis-section">
+    <header className="ai-diagnosis-heading">
+      <span className="ai-diagnosis-icon"><Icon name="sparkles" size={17} /></span>
+      <div><strong>AI diagnosis suggestion</strong><small>Clinical decision support based on this encounter and the patient timeline</small></div>
+      <button type="button" disabled={loading} onClick={() => void onRequest(encounterId)}>{loading ? "Generating…" : suggestion ? "Regenerate" : "Generate suggestion"}</button>
+    </header>
+    {!suggestion && !loading && !error && <p className="ai-diagnosis-intro">Generate a structured summary, differential diagnoses, red flags, and recommended next steps for clinician review.</p>}
+    {loading && <div className="ai-diagnosis-loading" role="status" aria-live="polite">
+      <div className="ai-loading-status"><span className="ai-loading-pulse"><Icon name="sparkles" size={15} /></span><p><strong>Generating clinical insights</strong><span>Reviewing the encounter, vital signs, laboratory records, and treatment history. This may take a moment.</span></p></div>
+      <div className="ai-shimmer-summary"><span className="ai-shimmer-line short" /><span className="ai-shimmer-line" /><span className="ai-shimmer-line" /><span className="ai-shimmer-line medium" /></div>
+      <div className="ai-shimmer-grid"><div><span className="ai-shimmer-line short" /><span className="ai-shimmer-line" /><span className="ai-shimmer-line medium" /></div><div><span className="ai-shimmer-line short" /><span className="ai-shimmer-line" /><span className="ai-shimmer-line medium" /></div></div>
+      <span className="sr-only">AI diagnosis suggestion is loading.</span>
+    </div>}
+    {error && <div className="ai-diagnosis-error"><strong>Suggestion unavailable</strong><span>{error}</span></div>}
+    {suggestion && <div className="ai-diagnosis-result">
+      <div className="ai-diagnosis-meta"><span>Generated by {suggestion.model}</span><span>{formatDate(suggestion.generated_at)}</span></div>
+      <div className="ai-diagnosis-summary"><strong>Clinical summary</strong><p>{suggestion.summary}</p></div>
+      <div className="ai-diagnosis-block"><strong>Differential diagnoses</strong><div className="ai-differentials">{suggestion.differential_diagnoses.map((item, index) => <article key={`${item.condition}-${index}`}><div><b>{item.condition}</b><em className={`ai-likelihood ${item.likelihood.toLowerCase()}`}>{titleCase(item.likelihood)}</em></div><p>{item.reasoning}</p></article>)}</div></div>
+      <div className="ai-diagnosis-columns">
+        <div className="ai-diagnosis-block ai-red-flags"><strong>Red flags</strong><ul>{suggestion.red_flags.map((flag, index) => <li key={`${flag}-${index}`}>{flag}</li>)}</ul></div>
+        <div className="ai-diagnosis-block ai-next-steps"><strong>Recommended next steps</strong><ol>{suggestion.recommended_next_steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}</ol></div>
+      </div>
+      <div className="ai-disclaimer"><Icon name="help" size={16} /><p><strong>Clinician review required</strong><span>{suggestion.disclaimer}</span></p></div>
+    </div>}
+  </section>;
 }
 
 function TimelineField({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
@@ -327,3 +423,4 @@ function firstName(name: string) { return name.replace(/^Dr\.\s*/i, "").split(" 
 function titleCase(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function dayPeriod() { const hour = new Date().getHours(); return hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"; }
 function formatTime(value: string) { return new Intl.DateTimeFormat("en-NG", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
+function formatShortDate(value: string) { return new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "short" }).format(new Date(value)); }

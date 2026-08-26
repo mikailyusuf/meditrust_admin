@@ -134,6 +134,52 @@ export type LabResultPayload = {
   file_urls: string[];
 };
 
+export type AiDifferentialDiagnosis = {
+  condition: string;
+  likelihood: "high" | "medium" | "low" | string;
+  reasoning: string;
+};
+
+export type AiDiagnosisSuggestion = {
+  summary: string;
+  differential_diagnoses: AiDifferentialDiagnosis[];
+  recommended_next_steps: string[];
+  red_flags: string[];
+  disclaimer: string;
+  model: string;
+  generated_at: string;
+};
+
+export type AppointmentPatient = {
+  id: string;
+  digital_health_id: string;
+  name: string;
+  dob: string;
+  sex: string;
+  blood_group: string | null;
+  allergies: string | null;
+  phone: string | null;
+  photo_url: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  guardian_patient_id: string | null;
+  created_at: string;
+};
+
+export type Appointment = {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  facility_id: string;
+  type: "clinic_visit" | string;
+  scheduled_at: string;
+  status: "pending" | "confirmed" | "completed" | "cancelled" | string;
+  fee: string | null;
+  notes: string | null;
+  facility: Pick<Facility, "id" | "type" | "name" | "address" | "phone" | "logo_url"> & { latitude: string | null; longitude: string | null };
+  patient: AppointmentPatient;
+};
+
 export type Facility = {
   id: string;
   type: "hospital" | "pharmacy" | "lab" | string;
@@ -200,6 +246,8 @@ export const meditrustApi = {
   recordVitals: (visitId: string, values: Omit<Vitals, "id" | "visit_id" | "patient_id" | "recorded_by" | "recorded_at">) => api<Vitals>(`/v1/visits/${encodeURIComponent(visitId)}/vitals`, json("POST", values)),
   getVitals: (patientId: string) => api<Vitals[]>(`/v1/patients/${encodeURIComponent(patientId)}/vitals`),
   getTimeline: (patientId: string) => api<TimelineItem[]>(`/v1/patients/${encodeURIComponent(patientId)}/timeline`),
+  getDoctorAppointments: () => api<Appointment[]>("/v1/doctor/appointments"),
+  getAiDiagnosisSuggestion: (encounterId: string) => api<AiDiagnosisSuggestion>(`/v1/encounters/${encodeURIComponent(encounterId)}/ai-diagnosis-suggestion`, json("POST")),
   createEncounter: (visitId: string, values: Pick<Encounter, "symptoms" | "assessment" | "diagnosis">) => api<Encounter>(`/v1/visits/${encodeURIComponent(visitId)}/encounters`, json("POST", values)),
   updateEncounter: (encounterId: string, values: Partial<Pick<Encounter, "symptoms" | "assessment" | "diagnosis" | "notes">>) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}`, json("PATCH", values)),
   finalizeEncounter: (encounterId: string) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}/finalize`, json("PATCH")),

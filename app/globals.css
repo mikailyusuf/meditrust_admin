@@ -586,7 +586,61 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .timeline-nested-orders b { color: var(--ink); font-size: 8px; }
 .timeline-nested-orders small { color: var(--muted); font-size: 7px; }
 .timeline-nested-orders em { padding: 4px 6px; border-radius: 6px; background: var(--green-soft); color: #16805f; font-size: 6px; font-style: normal; font-weight: 800; text-transform: capitalize; }
+.ai-diagnosis-section { margin: 0 16px 17px 56px; overflow: hidden; border: 1px solid #cdddea; border-radius: 13px; background: linear-gradient(145deg, #fbfdff, #f7f5ff); }
+.ai-diagnosis-heading { padding: 13px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.ai-diagnosis-icon { width: 34px; height: 34px; border-radius: 10px; color: #5a4ca0; background: #ece9fb; display: grid; place-items: center; }
+.ai-diagnosis-heading > div { min-width: 0; display: grid; gap: 3px; }
+.ai-diagnosis-heading strong { color: var(--navy); font-size: 9px; }
+.ai-diagnosis-heading small { color: var(--muted); font-size: 7px; line-height: 1.45; }
+.ai-diagnosis-heading button { min-height: 34px; padding: 0 12px; border: 0; border-radius: 9px; background: #5a4ca0; color: #fff; font: inherit; font-size: 7px; font-weight: 800; cursor: pointer; }
+.ai-diagnosis-intro { margin: 0; padding: 0 13px 14px 57px; color: #607484; font-size: 7.5px; line-height: 1.6; }
+.ai-diagnosis-loading { margin: 0 13px 13px; padding: 13px; border: 1px solid #e1e5f2; border-radius: 10px; background: rgba(255,255,255,.92); display: grid; gap: 12px; overflow: hidden; }
+.ai-loading-status { display: flex; align-items: center; gap: 10px; }
+.ai-loading-pulse { width: 31px; height: 31px; flex: 0 0 auto; border-radius: 9px; color: #5a4ca0; background: #eeeafd; display: grid; place-items: center; animation: ai-pulse 1.8s ease-in-out infinite; }
+.ai-loading-status p { margin: 0; display: grid; gap: 3px; }
+.ai-loading-status strong { color: var(--navy); font-size: 8px; }
+.ai-loading-status p span { color: #718391; font-size: 7px; line-height: 1.45; }
+.ai-shimmer-summary, .ai-shimmer-grid > div { padding: 11px; border-radius: 8px; background: #f8f9fc; display: grid; gap: 7px; }
+.ai-shimmer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.ai-shimmer-line { position: relative; height: 7px; overflow: hidden; border-radius: 99px; background: #e8ebf1; }
+.ai-shimmer-line::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, transparent, rgba(255,255,255,.88), transparent); transform: translateX(-100%); animation: ai-shimmer 1.35s ease-in-out infinite; }
+.ai-shimmer-line.short { width: 34%; }
+.ai-shimmer-line.medium { width: 70%; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.ai-diagnosis-error { margin: 0 13px 13px; padding: 11px 12px; border: 1px solid #f1c9cc; border-radius: 9px; background: #fff7f7; display: grid; gap: 3px; }
+.ai-diagnosis-error strong { color: #a43f49; font-size: 8px; }
+.ai-diagnosis-error span { color: #7c5860; font-size: 7px; line-height: 1.5; }
+.ai-diagnosis-result { padding: 0 13px 13px; display: grid; gap: 11px; }
+.ai-diagnosis-meta { padding-top: 9px; border-top: 1px solid #dfe7ee; color: #80909d; display: flex; justify-content: space-between; gap: 10px; font-size: 6.5px; }
+.ai-diagnosis-summary, .ai-diagnosis-block { padding: 12px; border: 1px solid #e0e7ed; border-radius: 10px; background: rgba(255,255,255,.9); }
+.ai-diagnosis-summary > strong, .ai-diagnosis-block > strong { color: #425767; font-size: 7px; letter-spacing: .06em; text-transform: uppercase; }
+.ai-diagnosis-summary p, .ai-differentials p { margin: 7px 0 0; color: #354d5c; font-size: 7.5px; line-height: 1.65; }
+.ai-differentials { margin-top: 8px; display: grid; gap: 7px; }
+.ai-differentials article { padding: 10px; border-radius: 8px; background: #f8fafc; }
+.ai-differentials article > div { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.ai-differentials b { color: var(--navy); font-size: 8px; }
+.ai-likelihood { padding: 3px 7px; border-radius: 99px; color: #5a6670; background: #e9eef1; font-size: 6px; font-style: normal; font-weight: 850; }
+.ai-likelihood.high { color: #a13c46; background: #fdebed; }
+.ai-likelihood.medium { color: #8a6810; background: #fff4d5; }
+.ai-likelihood.low { color: #26755c; background: #e7f6ef; }
+.ai-diagnosis-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+.ai-diagnosis-block ul, .ai-diagnosis-block ol { margin: 8px 0 0; padding-left: 16px; color: #405968; display: grid; gap: 7px; }
+.ai-diagnosis-block li { padding-left: 2px; font-size: 7px; line-height: 1.55; }
+.ai-red-flags { border-color: #f0d5d7; background: #fffafa; }
+.ai-red-flags > strong { color: #9b444b; }
+.ai-red-flags li::marker { color: #c4545d; }
+.ai-next-steps li::marker { color: #5a4ca0; font-weight: 800; }
+.ai-disclaimer { padding: 11px 12px; border-radius: 9px; color: #725b12; background: #fff7dd; display: flex; align-items: flex-start; gap: 9px; }
+.ai-disclaimer > svg { flex: 0 0 auto; margin-top: 1px; }
+.ai-disclaimer p { margin: 0; display: grid; gap: 3px; }
+.ai-disclaimer strong { font-size: 7.5px; }
+.ai-disclaimer span { font-size: 7px; line-height: 1.5; }
 @keyframes timeline-open { from { opacity: 0; transform: translateY(-3px); } }
+@keyframes ai-shimmer { to { transform: translateX(100%); } }
+@keyframes ai-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(90,76,160,.08); transform: scale(1); } 50% { box-shadow: 0 0 0 7px rgba(90,76,160,0); transform: scale(1.04); } }
+@media (prefers-reduced-motion: reduce) {
+  .ai-loading-pulse, .ai-shimmer-line::after { animation: none; }
+}
 .complete-visit { width: 100%; }
 .record-status.draft { background: #fff6dc; color: #8a6810; }
 .record-status.finalized { background: var(--green-soft); color: var(--green); }
@@ -637,6 +691,12 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
   .timeline-details-grid { padding: 14px; grid-template-columns: 1fr; }
   .timeline-details-grid > div.wide { grid-column: auto; }
   .timeline-nested-orders { margin: 0 14px 14px; }
+  .ai-diagnosis-section { margin: 0 14px 14px; }
+  .ai-diagnosis-heading { grid-template-columns: 34px minmax(0, 1fr); }
+  .ai-diagnosis-heading button { grid-column: 1 / -1; width: 100%; }
+  .ai-diagnosis-intro { padding: 0 13px 14px; }
+  .ai-diagnosis-columns { grid-template-columns: 1fr; }
+  .ai-shimmer-grid { grid-template-columns: 1fr; }
   .patient-facts { grid-template-columns: 1fr; }
   .patient-facts div:last-child { grid-column: auto; }
   .doctor-vitals { align-items: flex-start; }
