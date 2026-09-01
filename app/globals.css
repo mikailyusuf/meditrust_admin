@@ -452,6 +452,8 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .record-status.vitals_done { background: #f1effd; color: #6450aa; }
 .record-status.with_doctor { background: #fff6dc; color: #8a6810; }
 .record-status.cancelled { background: #fff0f0; color: #b13c3c; }
+.record-status.pending { background: #fff6dc; color: #8a6810; }
+.record-status.expired { background: #f1f5f7; color: #73838e; }
 .historical-visit-note { margin-top: 18px; padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: #f8fafb; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--muted); text-align: center; }
 .historical-visit-note > svg { margin-bottom: 3px; color: var(--blue); }
 .historical-visit-note strong { color: var(--ink); font-size: 11px; }
@@ -498,6 +500,18 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .visit-actions { margin-top: 22px; padding: 15px; border-radius: 12px; background: #fafcfd; display: flex; align-items: center; justify-content: space-between; }
 .visit-actions p { margin: 0; color: var(--muted); font-size: 8px; font-weight: 750; }
 .danger-outline { min-height: 38px; padding: 0 14px; border: 1px solid #e4a7a7; border-radius: 9px; background: #fff; color: #a53636; font-size: 8px; font-weight: 800; cursor: pointer; }
+.danger-outline:disabled { opacity: .55; cursor: not-allowed; }
+.checkin-otp-note { margin-top: 20px; padding: 12px 14px; border: 1px solid #cce4ec; border-radius: 11px; background: var(--blue-soft); display: flex; align-items: flex-start; gap: 9px; color: #3f5c6b; font-size: 8px; font-weight: 650; line-height: 1.5; }
+.checkin-otp-note > svg { flex-shrink: 0; margin-top: 1px; color: var(--blue); }
+.checkin-otp-form { margin-top: 16px; display: grid; gap: 12px; }
+.checkin-otp-form label { display: grid; gap: 6px; color: #425767; font-size: 8px; font-weight: 750; }
+.checkin-otp-form input { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--border); border-radius: 10px; background: #fbfdfe; color: var(--ink); outline: 0; font-size: 15px; font-weight: 700; letter-spacing: .28em; }
+.checkin-otp-form input:focus { border-color: #8cc9df; box-shadow: 0 0 0 3px rgba(8,126,174,.08); }
+.checkin-otp-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.checkin-otp-actions .modal-primary { flex: 1; min-width: 150px; }
+.checkin-cancel { margin-top: 18px; flex-wrap: wrap; gap: 10px; }
+.checkin-cancel-confirm { display: flex; flex-wrap: wrap; gap: 8px; }
+.checkin-cancel-confirm input { min-height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--ink); outline: 0; font-size: 9px; }
 .clinical-section, .doctor-clinical { margin-top: 24px; display: grid; gap: 17px; }
 .section-title.compact { margin: 0; display: flex; align-items: center; justify-content: space-between; }
 .section-title.compact h3 { margin: 0; font-size: 13px; }

@@ -40,6 +40,17 @@ export type Visit = {
   completed_at: string | null;
 };
 
+export type CheckInRequestStatus = "pending" | "waiting" | "cancelled" | "expired" | string;
+
+export type CheckInRequest = {
+  id: string;
+  patient: Pick<PatientSummary, "id" | "digital_health_id" | "name">;
+  status: CheckInRequestStatus;
+  otp_sent: boolean;
+  facility_id?: string;
+  reason?: string | null;
+};
+
 export type Vitals = {
   id: string;
   visit_id: string;
@@ -241,7 +252,14 @@ export const meditrustApi = {
     return result.data;
   },
   getVisit: (visitId: string) => api<Visit>(`/v1/visits/${encodeURIComponent(visitId)}`),
-  checkIn: (facilityId: string, digitalHealthId: string) => api<Visit>(`/v1/facilities/${encodeURIComponent(facilityId)}/visits`, json("POST", { digital_health_id: digitalHealthId })),
+  checkIn: (facilityId: string, digitalHealthId: string) => api<CheckInRequest>(`/v1/facilities/${encodeURIComponent(facilityId)}/check-in-requests`, json("POST", { digital_health_id: digitalHealthId })),
+  listCheckInRequests: async (facilityId: string, status = "pending") => {
+    const result = await api<{ data: CheckInRequest[] }>(`/v1/facilities/${encodeURIComponent(facilityId)}/check-in-requests?status=${encodeURIComponent(status)}`);
+    return result.data;
+  },
+  verifyCheckInOtp: (checkInRequestId: string, otp: string) => api<Visit>(`/v1/check-in-requests/${encodeURIComponent(checkInRequestId)}/verify-otp`, json("POST", { otp })),
+  resendCheckInOtp: (checkInRequestId: string) => api<{ otp_sent: boolean }>(`/v1/check-in-requests/${encodeURIComponent(checkInRequestId)}/resend-otp`, json("POST")),
+  cancelCheckInRequest: (checkInRequestId: string, reason: string) => api<CheckInRequest>(`/v1/check-in-requests/${encodeURIComponent(checkInRequestId)}/cancel`, json("POST", { reason })),
   updateVisitStatus: (visitId: string, status: "completed" | "cancelled") => api<Visit>(`/v1/visits/${encodeURIComponent(visitId)}/status`, json("PATCH", { status })),
   recordVitals: (visitId: string, values: Omit<Vitals, "id" | "visit_id" | "patient_id" | "recorded_by" | "recorded_at">) => api<Vitals>(`/v1/visits/${encodeURIComponent(visitId)}/vitals`, json("POST", values)),
   getVitals: (patientId: string) => api<Vitals[]>(`/v1/patients/${encodeURIComponent(patientId)}/vitals`),

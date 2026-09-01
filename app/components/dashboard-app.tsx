@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   ApiError, ageFromDob, clearSession, formatDate, loadSession, meditrustApi,
-  type AiDiagnosisSuggestion, type Appointment, type Encounter, type Facility, type LabRequest, type PatientSummary,
+  type AiDiagnosisSuggestion, type Appointment, type CheckInRequest, type Encounter, type Facility, type LabRequest, type PatientSummary,
   type Prescription, type Session, type StaffRole, type TimelineItem,
   type Visit, type Vitals,
 } from "../lib/meditrust";
@@ -25,7 +25,7 @@ const doctorQueueFilters: { value: DoctorQueueFilter; label: string }[] = [
 ];
 
 const navigation: Record<StaffRole, NavItem[]> = {
-  reception: [{ label: "Overview", icon: "grid" }, { label: "Patient check-in", icon: "userPlus" }, { label: "Visit queue", icon: "clock" }],
+  reception: [{ label: "Overview", icon: "grid" }, { label: "Patient check-in", icon: "userPlus" }, { label: "Check-in requests", icon: "userCheck" }, { label: "Visit queue", icon: "clock" }],
   nurse: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }],
   doctor: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }, { label: "Appointments", icon: "calendar" }, { label: "Patient search", icon: "search" }],
   pharmacy: [{ label: "Overview", icon: "grid" }],
@@ -50,6 +50,8 @@ export function DashboardApp() {
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [checkInRequests, setCheckInRequests] = useState<CheckInRequest[]>([]);
+  const [checkInRequestsLoading, setCheckInRequestsLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
 
@@ -112,6 +114,22 @@ export function DashboardApp() {
 
   useEffect(() => { void Promise.resolve().then(refreshAppointments); }, [refreshAppointments]);
 
+  const refreshCheckInRequests = useCallback(async () => {
+    if (!facilityId || role !== "reception") return;
+    setCheckInRequestsLoading(true);
+    try { setCheckInRequests(await meditrustApi.listCheckInRequests(facilityId, "pending")); }
+    catch (reason) { reportError(reason); }
+    finally { setCheckInRequestsLoading(false); }
+  }, [facilityId, role, reportError]);
+
+  useEffect(() => { void Promise.resolve().then(refreshCheckInRequests); }, [refreshCheckInRequests]);
+
+  useEffect(() => {
+    if (role !== "reception" || active !== "Check-in requests") return;
+    const timer = window.setInterval(() => { void refreshCheckInRequests(); }, 20000);
+    return () => window.clearInterval(timer);
+  }, [role, active, refreshCheckInRequests]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     clearSession(); router.replace("/login");
@@ -135,22 +153,23 @@ export function DashboardApp() {
         {facility?.status && <i className={facility.status === "active" ? "active" : ""}>{facility.status}</i>}
       </div>
       <div className="role-badge"><span>{roleLabels[role]} workspace</span><small>{session.user.facility_staff.staff_code}</small></div>
-      <nav className="nav-group" aria-label="Main navigation"><p className="nav-label">Workspace</p>{navItems.map((item) => <button key={item.label} className={`nav-item ${active === item.label ? "active" : ""}`} onClick={() => navigate(item.label)}><Icon name={item.icon} /><span>{item.label}</span>{item.label === "Visit queue" && queue.length > 0 && <b>{queue.length}</b>}</button>)}</nav>
+      <nav className="nav-group" aria-label="Main navigation"><p className="nav-label">Workspace</p>{navItems.map((item) => <button key={item.label} className={`nav-item ${active === item.label ? "active" : ""}`} onClick={() => navigate(item.label)}><Icon name={item.icon} /><span>{item.label}</span>{item.label === "Visit queue" && queue.length > 0 && <b>{queue.length}</b>}{item.label === "Check-in requests" && checkInRequests.length > 0 && <b>{checkInRequests.length}</b>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="doctor-card"><div className="avatar avatar-dark">{initials}</div><div><strong>{session.user.name}</strong><span>{roleLabels[role]} · {session.user.facility_staff.staff_code}</span></div></div><button className="logout-button sidebar-logout" onClick={logout}>Sign out securely</button></div>
     </aside>
     <main className="main-content">
-      <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => { void refreshFacility(); void refreshQueue(); void refreshAppointments(); }} aria-label="Refresh workspace"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
+      <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => { void refreshFacility(); void refreshQueue(); void refreshAppointments(); void refreshCheckInRequests(); }} aria-label="Refresh workspace"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
       <div className="dashboard role-dashboard">
         {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
         {active === "Overview" && !isPharmacyRole(role) && !isLabRole(role) && <RoleOverview session={session} facility={facility} queue={queue} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
-        {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onCheckedIn={(visit) => { setQueue((current) => [visit, ...current.filter((item) => item.id !== visit.id)]); notify(`${visit.patient.name} checked in`); }} onError={reportError} />}
+        {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onCheckInRequested={(request) => { setCheckInRequests((current) => [request, ...current.filter((item) => item.id !== request.id)]); notify(`Check-in code sent to ${request.patient.name}`); setActive("Check-in requests"); }} onError={reportError} />}
+        {active === "Check-in requests" && role === "reception" && <CheckInRequests requests={checkInRequests} loading={checkInRequestsLoading} onRefresh={refreshCheckInRequests} onResolved={(id) => setCheckInRequests((current) => current.filter((item) => item.id !== id))} onCheckedIn={(visit) => { void refreshQueue(); notify(`${visit.patient.name} checked in`); }} onError={reportError} notify={notify} />}
         {active === "Appointments" && role === "doctor" && <AppointmentsPanel appointments={appointments} loading={appointmentsLoading} onRefresh={refreshAppointments} />}
         {active === "Visit queue" && <VisitQueue role={role} statusFilter={doctorQueueFilter} onStatusFilterChange={setDoctorQueueFilter} visits={queue} loading={queueLoading} selected={selectedVisit} onSelect={setSelectedVisit} onRefresh={refreshQueue} onVisitChanged={(visit) => { const visibleStatuses = role === "doctor" ? doctorQueueFilter === "active" ? ["waiting", "vitals_done"] : [doctorQueueFilter] : ["waiting"]; const remainsVisible = visibleStatuses.includes(visit.status as DoctorQueueFilter); setQueue((current) => remainsVisible ? current.map((item) => item.id === visit.id ? visit : item) : current.filter((item) => item.id !== visit.id)); setSelectedVisit(remainsVisible ? visit : null); notify(`Visit marked ${visit.status}`); }} onError={reportError} notify={notify} />}
         {isLabRole(role) && active === "Overview" && <LabTechWorkspace facilityId={facilityId} onError={reportError} notify={notify} />}
         {isPharmacyRole(role) && active === "Overview" && <PharmacyWorkspace facilityId={facilityId} onError={reportError} notify={notify} />}
       </div>
     </main>
-    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{navItems.map((item) => <button key={item.label} className={active === item.label ? "active" : ""} onClick={() => navigate(item.label)}><span><Icon name={item.icon} size={20} />{item.label === "Visit queue" && queue.length > 0 && <i />}</span><small>{item.label.replace("Patient ", "")}</small></button>)}<button onClick={() => setMenuOpen(true)}><span><Icon name="more" size={20} /></span><small>More</small></button></nav>
+    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{navItems.map((item) => <button key={item.label} className={active === item.label ? "active" : ""} onClick={() => navigate(item.label)}><span><Icon name={item.icon} size={20} />{((item.label === "Visit queue" && queue.length > 0) || (item.label === "Check-in requests" && checkInRequests.length > 0)) && <i />}</span><small>{item.label.replace("Patient ", "")}</small></button>)}<button onClick={() => setMenuOpen(true)}><span><Icon name="more" size={20} /></span><small>More</small></button></nav>
     {toast && <div className="toast" role="status"><Icon name="check" size={17} />{toast}</div>}
   </div>;
 }
@@ -164,16 +183,91 @@ function RoleOverview({ session, facility, queue, loading, onNavigate, onSelect 
     <section className="panel queue-preview"><div className="panel-heading"><div><h2>Waiting queue</h2><p>Patients checked in and ready for the next step</p></div><button className="text-button" onClick={() => onNavigate("Visit queue")}>View all <Icon name="arrow" size={16} /></button></div><div className="visit-list">{loading ? <LoadingState /> : queue.length ? queue.slice(0, 5).map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} onClick={() => onSelect(visit)} />) : <EmptyState title="No patients waiting" body="The queue is clear right now." />}</div></section></>;
 }
 
-function PatientSearch({ role, facilityId, onCheckedIn, onError }: { role: StaffRole; facilityId: string; onCheckedIn: (visit: Visit) => void; onError: (reason: unknown) => void }) {
+function PatientSearch({ role, facilityId, onCheckInRequested, onError }: { role: StaffRole; facilityId: string; onCheckInRequested: (request: CheckInRequest) => void; onError: (reason: unknown) => void }) {
   const [query, setQuery] = useState(""); const [results, setResults] = useState<PatientSummary[]>([]); const [selected, setSelected] = useState<PatientSummary | null>(null); const [loading, setLoading] = useState(false); const [checkingIn, setCheckingIn] = useState(false); const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   async function search(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!query.trim()) return; setLoading(true); setSelected(null); setTimeline([]); try { setResults(await meditrustApi.searchPatients(query.trim())); } catch (reason) { onError(reason); } finally { setLoading(false); } }
   async function choose(patient: PatientSummary) { setSelected(patient); if (role === "doctor") { try { setTimeline(await meditrustApi.getTimeline(patient.id)); } catch (reason) { onError(reason); } } }
-  async function checkIn() { if (!selected) return; setCheckingIn(true); try { onCheckedIn(await meditrustApi.checkIn(facilityId, selected.digital_health_id)); } catch (reason) { onError(reason); } finally { setCheckingIn(false); } }
-  return <section className="role-workspace"><WorkspaceHeading eyebrow={role === "reception" ? "Front desk" : "Clinical records"} title={role === "reception" ? "Find and check in a patient" : "Patient search"} description={role === "reception" ? "Search by Digital Health ID or patient name, then confirm the patient before check-in." : "Find a patient and review their longitudinal clinical timeline."} />
+  async function checkIn() { if (!selected) return; setCheckingIn(true); try { onCheckInRequested(await meditrustApi.checkIn(facilityId, selected.digital_health_id)); } catch (reason) { onError(reason); } finally { setCheckingIn(false); } }
+  return <section className="role-workspace"><WorkspaceHeading eyebrow={role === "reception" ? "Front desk" : "Clinical records"} title={role === "reception" ? "Find and check in a patient" : "Patient search"} description={role === "reception" ? "Search by Digital Health ID or patient name, then confirm the patient. A one-time code is emailed to the patient — verify it (or let the patient approve on their device) to complete check-in." : "Find a patient and review their longitudinal clinical timeline."} />
     <form className="patient-search-form" onSubmit={search}><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digital Health ID or patient name" aria-label="Patient search" /><button className="primary-button" disabled={loading}>{loading ? "Searching…" : "Search"}</button></form>
     <div className="search-workspace-grid"><div className="data-panel search-patient-list"><div className="data-toolbar"><strong>Search results</strong><span>{results.length} found</span></div>{loading ? <LoadingState /> : results.length ? results.map((patient) => <button key={patient.id} className={`patient-result ${selected?.id === patient.id ? "selected" : ""}`} onClick={() => void choose(patient)}><PatientAvatar patient={patient} /><span><strong>{patient.name}</strong><small>{patient.digital_health_id} · {ageFromDob(patient.dob)} years · {patient.sex}</small></span><Icon name="chevron" /></button>) : <EmptyState title="Search for a patient" body="Results will appear here." />}</div>
-      <div className="panel patient-selection">{selected ? <><div className="selected-patient-head"><PatientAvatar patient={selected} large /><div><span>Patient confirmed</span><h2>{selected.name}</h2><p>{selected.digital_health_id}</p></div></div><dl className="patient-facts"><div><dt>Date of birth</dt><dd>{selected.dob}</dd></div><div><dt>Sex</dt><dd>{selected.sex}</dd></div><div><dt>Phone</dt><dd>{selected.phone || "Not provided"}</dd></div></dl>{role === "reception" ? <button className="modal-primary" disabled={checkingIn} onClick={checkIn}>{checkingIn ? "Checking in…" : "Confirm patient check-in"} <Icon name="arrow" size={17} /></button> : <Timeline items={timeline} />}</> : <EmptyState title="Select a patient" body="Confirm the correct record before continuing." />}</div></div>
+      <div className="panel patient-selection">{selected ? <><div className="selected-patient-head"><PatientAvatar patient={selected} large /><div><span>Patient confirmed</span><h2>{selected.name}</h2><p>{selected.digital_health_id}</p></div></div><dl className="patient-facts"><div><dt>Date of birth</dt><dd>{selected.dob}</dd></div><div><dt>Sex</dt><dd>{selected.sex}</dd></div><div><dt>Phone</dt><dd>{selected.phone || "Not provided"}</dd></div></dl>{role === "reception" ? <button className="modal-primary" disabled={checkingIn} onClick={checkIn}>{checkingIn ? "Sending code…" : "Confirm & send check-in code"} <Icon name="arrow" size={17} /></button> : <Timeline items={timeline} />}</> : <EmptyState title="Select a patient" body="Confirm the correct record before continuing." />}</div></div>
   </section>;
+}
+
+function CheckInRequests({ requests, loading, onRefresh, onResolved, onCheckedIn, onError, notify }: { requests: CheckInRequest[]; loading: boolean; onRefresh: () => Promise<void>; onResolved: (id: string) => void; onCheckedIn: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = requests.find((request) => request.id === selectedId) || requests[0] || null;
+  return <section className="role-workspace">
+    <WorkspaceHeading eyebrow="Front desk" title="Check-in requests" description="Patients awaiting check-in confirmation. Enter the one-time code emailed to the patient, or wait for them to approve on their own device." action={<button className="secondary-button" onClick={() => void onRefresh()} disabled={loading}><Icon name="trend" size={17} />Refresh</button>} />
+    <div className="queue-workspace-grid">
+      <div className="data-panel queue-list">
+        <div className="data-toolbar"><strong>{requests.length} pending</strong><span>Awaiting verification</span></div>
+        {loading && !requests.length ? <LoadingState /> : requests.length ? requests.map((request) => <button key={request.id} className={`patient-result ${selected?.id === request.id ? "selected" : ""}`} onClick={() => setSelectedId(request.id)}>
+          <div className="avatar blue">{initialsOf(request.patient.name)}</div>
+          <span><strong>{request.patient.name}</strong><small>{request.patient.digital_health_id} · {request.otp_sent ? "Code sent" : "Code not sent"}</small></span>
+          <Icon name="chevron" />
+        </button>) : <EmptyState title="No pending requests" body="New check-in requests will appear here." />}
+      </div>
+      <div className="panel visit-detail-panel">{selected
+        ? <CheckInRequestDetail key={selected.id} request={selected} onResolved={onResolved} onCheckedIn={onCheckedIn} onError={onError} notify={notify} />
+        : <EmptyState title="Select a request" body="Verification actions will appear here." />}</div>
+    </div>
+  </section>;
+}
+
+function CheckInRequestDetail({ request, onResolved, onCheckedIn, onError, notify }: { request: CheckInRequest; onResolved: (id: string) => void; onCheckedIn: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const [otp, setOtp] = useState("");
+  const [busy, setBusy] = useState<"verify" | "resend" | "cancel" | null>(null);
+  const [reason, setReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+
+  async function verify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (otp.length < 4) return;
+    setBusy("verify");
+    try { const visit = await meditrustApi.verifyCheckInOtp(request.id, otp); onResolved(request.id); onCheckedIn(visit); }
+    catch (error) { onError(error); }
+    finally { setBusy(null); }
+  }
+
+  async function resend() {
+    setBusy("resend");
+    try { await meditrustApi.resendCheckInOtp(request.id); notify("Check-in code resent to patient"); }
+    catch (error) { onError(error); }
+    finally { setBusy(null); }
+  }
+
+  async function cancel() {
+    if (!reason.trim()) return;
+    setBusy("cancel");
+    try { await meditrustApi.cancelCheckInRequest(request.id, reason.trim()); onResolved(request.id); notify("Check-in request cancelled"); }
+    catch (error) { onError(error); }
+    finally { setBusy(null); }
+  }
+
+  return <>
+    <div className="visit-patient-head">
+      <div className="avatar blue large">{initialsOf(request.patient.name)}</div>
+      <div><span className={`record-status ${request.status}`}>{titleCase(request.status)}</span><h2>{request.patient.name}</h2><p>{request.patient.digital_health_id}</p></div>
+    </div>
+    <div className="checkin-otp-note"><Icon name="mail" size={16} /><span>{request.otp_sent ? "A one-time check-in code was emailed to the patient. The patient can also approve this check-in from their own device — refresh to pick that up." : "No code has been sent yet. Use “Resend code” to email the patient a check-in code."}</span></div>
+    <form className="checkin-otp-form" onSubmit={verify}>
+      <label>Check-in code
+        <input value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="Enter the 6-digit code" />
+      </label>
+      <div className="checkin-otp-actions">
+        <button type="submit" className="modal-primary" disabled={busy !== null || otp.length < 4}>{busy === "verify" ? "Verifying…" : "Verify & check in"}</button>
+        <button type="button" className="secondary-button" disabled={busy !== null} onClick={() => void resend()}>{busy === "resend" ? "Sending…" : "Resend code"}</button>
+      </div>
+    </form>
+    <div className="visit-actions checkin-cancel">
+      <p>Wrong patient selected?</p>
+      {cancelling
+        ? <div className="checkin-cancel-confirm"><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason for cancelling" /><button className="danger-outline" disabled={busy !== null || !reason.trim()} onClick={() => void cancel()}>{busy === "cancel" ? "Cancelling…" : "Confirm cancel"}</button></div>
+        : <button className="danger-outline" disabled={busy !== null} onClick={() => setCancelling(true)}>Cancel request</button>}
+    </div>
+  </>;
 }
 
 function VisitQueue({ role, statusFilter, onStatusFilterChange, visits, loading, selected, onSelect, onRefresh, onVisitChanged, onError, notify }: { role: StaffRole; statusFilter: DoctorQueueFilter; onStatusFilterChange: (status: DoctorQueueFilter) => void; visits: Visit[]; loading: boolean; selected: Visit | null; onSelect: (visit: Visit | null) => void; onRefresh: () => Promise<void>; onVisitChanged: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
@@ -413,7 +507,8 @@ function displayValue(value: unknown) {
 }
 
 function VisitRow({ visit, position, selected, onClick }: { visit: Visit; position: number; selected?: boolean; onClick: () => void }) { return <button className={`visit-row ${selected ? "selected" : ""}`} onClick={onClick}><span className="queue-number">{position}</span><PatientAvatar patient={visit.patient} /><span><strong>{visit.patient.name}</strong><small>{visit.patient.digital_health_id} · {ageFromDob(visit.patient.dob)} yrs · {visit.patient.sex} · {titleCase(visit.status)}</small></span><span className="wait-time"><strong>{formatTime(visit.checked_in_at)}</strong><small>Checked in</small></span><Icon name="chevron" size={17} /></button>; }
-function PatientAvatar({ patient, large = false }: { patient: PatientSummary; large?: boolean }) { return <div className={`avatar blue ${large ? "large" : ""}`}>{patient.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>; }
+function PatientAvatar({ patient, large = false }: { patient: PatientSummary; large?: boolean }) { return <div className={`avatar blue ${large ? "large" : ""}`}>{initialsOf(patient.name)}</div>; }
+function initialsOf(name: string) { return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 function WorkspaceHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) { return <header className="workspace-header role-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>{action}</header>; }
 function LoadingState() { return <div className="role-loading"><span className="spinner" />Loading current records…</div>; }
 function EmptyState({ title, body }: { title: string; body: string }) { return <div className="empty-state role-empty"><Icon name="hospital" /><strong>{title}</strong><span>{body}</span></div>; }
