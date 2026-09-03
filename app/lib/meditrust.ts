@@ -69,6 +69,10 @@ export type Vitals = {
 
 export type EncounterStatus = "draft" | "finalized" | string;
 
+export type PaymentStatus = "unpaid" | "paid" | "waived";
+
+export type PaymentUpdate = { amount: number; payment_status: PaymentStatus };
+
 export type Prescription = {
   id: string;
   encounter_id: string;
@@ -83,6 +87,9 @@ export type Prescription = {
   issued_at: string;
   forwarded_to_facility_id: string | null;
   forward_status: string | null;
+  amount: string | null;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
 };
 
 export type Encounter = {
@@ -99,7 +106,15 @@ export type Encounter = {
   finalized_at: string | null;
   superseded_by_id: string | null;
   prescriptions?: Prescription[];
+  lab_requests?: LabRequest[];
   created_at: string;
+};
+
+export type LabResult = {
+  result_text: string | null;
+  values: Record<string, string> | null;
+  file_urls: string[] | null;
+  resulted_at: string | null;
 };
 
 export type LabRequest = {
@@ -113,6 +128,10 @@ export type LabRequest = {
   notes?: string | null;
   status: string;
   ordered_at: string;
+  amount: string | null;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+  result?: LabResult | null;
   doctor?: Pick<AuthUser, "id" | "name" | "email" | "phone">;
   facility?: Pick<Facility, "id" | "type" | "name" | "address" | "phone">;
 };
@@ -270,11 +289,13 @@ export const meditrustApi = {
   updateEncounter: (encounterId: string, values: Partial<Pick<Encounter, "symptoms" | "assessment" | "diagnosis" | "notes">>) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}`, json("PATCH", values)),
   finalizeEncounter: (encounterId: string) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}/finalize`, json("PATCH")),
   amendEncounter: (encounterId: string, values: Partial<Pick<Encounter, "symptoms" | "assessment" | "diagnosis" | "notes">>) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}/amend`, json("POST", values)),
-  createPrescription: (encounterId: string, values: Omit<Prescription, "id" | "encounter_id" | "patient_id" | "doctor_id" | "status" | "issued_at" | "forwarded_to_facility_id" | "forward_status">) => api<Prescription>(`/v1/encounters/${encodeURIComponent(encounterId)}/prescriptions`, json("POST", values)),
+  createPrescription: (encounterId: string, values: Omit<Prescription, "id" | "encounter_id" | "patient_id" | "doctor_id" | "status" | "issued_at" | "forwarded_to_facility_id" | "forward_status" | "amount" | "payment_status" | "paid_at">) => api<Prescription>(`/v1/encounters/${encodeURIComponent(encounterId)}/prescriptions`, json("POST", values)),
   forwardPrescription: (prescriptionId: string, pharmacyFacilityId: string) => api<Prescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/forward`, json("POST", { pharmacy_facility_id: pharmacyFacilityId })),
+  setPrescriptionPayment: (prescriptionId: string, payload: PaymentUpdate) => api<FacilityPrescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/payment`, json("PATCH", payload)),
   createLabRequest: (encounterId: string, testName: string, notes: string) => api<LabRequest>(`/v1/encounters/${encodeURIComponent(encounterId)}/lab-requests`, json("POST", { test_name: testName, notes })),
   forwardLabRequest: (labRequestId: string, labFacilityId: string) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/forward`, json("POST", { lab_facility_id: labFacilityId })),
   listFacilityLabRequests: (facilityId: string, page: number, perPage = 20) => api<Paginated<LabRequest>>(`/v1/facilities/${encodeURIComponent(facilityId)}/lab-requests?page=${page}&per_page=${perPage}`),
+  setLabRequestPayment: (labRequestId: string, payload: PaymentUpdate) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/payment`, json("PATCH", payload)),
   submitLabResult: (labRequestId: string, payload: LabResultPayload) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/result`, json("POST", payload)),
   uploadFile: (file: File, folder = "lab-results") => {
     const body = new FormData();

@@ -8,18 +8,30 @@ import {
   type FacilityPrescription,
   type LabRequest,
   type PaginationMeta,
+  type PaymentStatus,
+  type StaffRole,
 } from "../lib/meditrust";
 import { Icon } from "./icons";
 
 type WorkspaceProps = {
   facilityId: string;
+  role: StaffRole;
   onError: (reason: unknown) => void;
   notify: (message: string) => void;
 };
 
+const paymentStatusLabels: Record<PaymentStatus, string> = { unpaid: "Unpaid", paid: "Paid", waived: "Waived" };
+
+function formatAmount(amount: string | null) {
+  if (amount == null || amount === "") return "Not priced";
+  const value = Number(amount);
+  return Number.isNaN(value) ? amount : `₦${value.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 type ResultValue = { id: number; key: string; value: string };
 
-export function LabTechWorkspace({ facilityId, onError, notify }: WorkspaceProps) {
+export function LabTechWorkspace({ facilityId, role, onError, notify }: WorkspaceProps) {
+  const canBill = role === "lab_tech";
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -86,6 +98,14 @@ export function LabTechWorkspace({ facilityId, onError, notify }: WorkspaceProps
     } finally { setSubmitting(false); }
   }
 
+  async function setPayment(payload: { amount: number; payment_status: PaymentStatus }) {
+    if (!selected) return;
+    const updated = await meditrustApi.setLabRequestPayment(selected.id, payload);
+    setSelected((current) => current && current.id === updated.id ? { ...current, ...updated } : current);
+    setRequests((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    notify("Payment updated");
+  }
+
   return <section className="ancillary-workspace">
     <WorkspaceIntro eyebrow="Diagnostics operations" title="Laboratory requests" description="Review referred investigations, record structured values, and attach completed reports." count={meta?.total} loading={loading} onRefresh={() => void loadRequests()} />
     <div className="ancillary-layout">
@@ -96,8 +116,9 @@ export function LabTechWorkspace({ facilityId, onError, notify }: WorkspaceProps
       </section>
       <section className="ancillary-detail-panel">{selected ? <>
         <header className="ancillary-detail-heading"><span><Icon name="hospital" size={21} /></span><div><small>Laboratory request</small><h2>{selected.test_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.status} /></header>
-        <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div></dl>
-        {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div> : <form className="lab-result-form" onSubmit={submitResult}>
+        <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
+        <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.status === "resulted"} kind="test" onSubmit={setPayment} />
+        {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
           <div className="ancillary-section-title"><span>Result entry</span><h3>Record laboratory findings</h3><p>Add a written interpretation and any structured result values.</p></div>
           <label>Result summary<textarea name="result_text" rows={4} required placeholder="e.g. Malaria RDT: Positive" disabled={submitting} /></label>
           <div className="result-values-heading"><div><strong>Structured values</strong><small>Optional key/value measurements</small></div><button type="button" onClick={addValue} disabled={submitting}><Icon name="userPlus" size={14} />Add value</button></div>
@@ -113,7 +134,8 @@ export function LabTechWorkspace({ facilityId, onError, notify }: WorkspaceProps
   </section>;
 }
 
-export function PharmacyWorkspace({ facilityId, onError, notify }: WorkspaceProps) {
+export function PharmacyWorkspace({ facilityId, role, onError, notify }: WorkspaceProps) {
+  const canBill = role === "pharmacist";
   const [prescriptions, setPrescriptions] = useState<FacilityPrescription[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -134,16 +156,27 @@ export function PharmacyWorkspace({ facilityId, onError, notify }: WorkspaceProp
 
   useEffect(() => { void Promise.resolve().then(loadPrescriptions); }, [loadPrescriptions]);
 
+  function applyUpdate(id: string, updated: Partial<FacilityPrescription>) {
+    setSelected((current) => current && current.id === id ? { ...current, ...updated } : current);
+    setPrescriptions((current) => current.map((item) => item.id === id ? { ...item, ...updated } : item));
+  }
+
   async function dispense() {
     if (!selected) return;
     setDispensing(true);
     try {
       const updated = await meditrustApi.dispensePrescription(selected.id);
-      setSelected((current) => current ? { ...current, ...updated, forward_status: updated.forward_status || "dispensed" } : current);
-      setPrescriptions((current) => current.map((item) => item.id === selected.id ? { ...item, ...updated, forward_status: updated.forward_status || "dispensed" } : item));
+      applyUpdate(selected.id, { ...updated, forward_status: updated.forward_status || "dispensed" });
       notify("Prescription marked as dispensed");
     } catch (reason) { onError(reason); }
     finally { setDispensing(false); }
+  }
+
+  async function setPayment(payload: { amount: number; payment_status: PaymentStatus }) {
+    if (!selected) return;
+    const updated = await meditrustApi.setPrescriptionPayment(selected.id, payload);
+    applyUpdate(selected.id, updated);
+    notify("Payment updated");
   }
 
   return <section className="ancillary-workspace pharmacy-workspace">
@@ -154,11 +187,46 @@ export function PharmacyWorkspace({ facilityId, onError, notify }: WorkspaceProp
         <Pagination meta={meta} page={page} loading={loading} onPage={setPage} />
       </section>
       <section className="ancillary-detail-panel">{selected ? <><header className="ancillary-detail-heading"><span className="pharmacy"><Icon name="file" size={21} /></span><div><small>Prescription</small><h2>{selected.medication_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.forward_status || selected.status} /></header>
-        <dl className="ancillary-facts prescription-facts"><div><dt>Dosage</dt><dd>{selected.dosage}</dd></div><div><dt>Frequency</dt><dd>{selected.frequency}</dd></div><div><dt>Duration</dt><dd>{selected.duration_days} days</dd></div><div><dt>Prescribing doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div className="wide"><dt>Instructions</dt><dd>{selected.instructions || "No special instructions"}</dd></div><div><dt>Issued</dt><dd>{formatDate(selected.issued_at)}</dd></div></dl>
-        <div className="dispense-panel"><span><Icon name="check" /></span><div><strong>{selected.forward_status === "dispensed" ? "Dispensing complete" : "Ready to dispense"}</strong><p>{selected.forward_status === "dispensed" ? "This prescription has been marked as dispensed." : "Confirm only after the medication has been prepared and handed to the patient."}</p></div><button disabled={dispensing || selected.forward_status === "dispensed"} onClick={() => void dispense()}>{dispensing ? "Updating…" : selected.forward_status === "dispensed" ? "Dispensed" : "Mark as dispensed"}</button></div>
+        <dl className="ancillary-facts prescription-facts"><div><dt>Dosage</dt><dd>{selected.dosage}</dd></div><div><dt>Frequency</dt><dd>{selected.frequency}</dd></div><div><dt>Duration</dt><dd>{selected.duration_days} days</dd></div><div><dt>Prescribing doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div className="wide"><dt>Instructions</dt><dd>{selected.instructions || "No special instructions"}</dd></div><div><dt>Issued</dt><dd>{formatDate(selected.issued_at)}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
+        <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.forward_status === "dispensed"} kind="drug" onSubmit={setPayment} />
+        <div className="dispense-panel"><span><Icon name="check" /></span><div><strong>{selected.forward_status === "dispensed" ? "Dispensing complete" : selected.payment_status === "unpaid" ? "Payment outstanding" : "Ready to dispense"}</strong><p>{selected.forward_status === "dispensed" ? "This prescription has been marked as dispensed." : selected.payment_status === "unpaid" ? "Settle or waive the payment above before dispensing." : "Confirm only after the medication has been prepared and handed to the patient."}</p></div><button disabled={dispensing || selected.forward_status === "dispensed" || selected.payment_status === "unpaid"} onClick={() => void dispense()}>{dispensing ? "Updating…" : selected.forward_status === "dispensed" ? "Dispensed" : "Mark as dispensed"}</button></div>
       </> : <AncillaryEmpty title="Select a prescription" body="Medication details and dispensing actions will appear here." />}</section>
     </div>
   </section>;
+}
+
+type PaymentRecord = { id: string; amount: string | null; payment_status: PaymentStatus; paid_at: string | null };
+
+function PaymentPanel({ record, canBill, locked, kind, onSubmit }: { record: PaymentRecord; canBill: boolean; locked: boolean; kind: "drug" | "test"; onSubmit: (payload: { amount: number; payment_status: PaymentStatus }) => Promise<void> }) {
+  const [amount, setAmount] = useState(record.amount ?? "");
+  const [status, setStatus] = useState<PaymentStatus>(record.payment_status);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit({ amount: Number(amount || 0), payment_status: status });
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : "The price could not be saved.");
+    } finally { setSaving(false); }
+  }
+
+  return <div className="payment-panel">
+    <div className="ancillary-section-title"><span>Billing</span><h3>Price &amp; payment</h3><p>Set the amount the patient owes for this {kind === "drug" ? "medication" : "investigation"} and record how it was settled.</p></div>
+    <div className="payment-summary"><div><small>Current price</small><strong>{formatAmount(record.amount)}</strong></div><div><small>Status</small><span className={`ancillary-status ${record.payment_status}`}>{paymentStatusLabels[record.payment_status]}</span></div>{record.paid_at && <div><small>Paid</small><strong>{formatDate(record.paid_at)}</strong></div>}</div>
+    {locked ? <p className="payment-hint">{kind === "drug" ? "This medication has been dispensed — the price and payment can no longer be changed." : "This investigation has been resulted — the price and payment can no longer be changed."}</p> : canBill ? <form className="payment-form" onSubmit={submit}>
+      <div className="payment-fields">
+        <label>Amount (₦)<input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" disabled={saving} /></label>
+        <label>Payment status<select value={status} onChange={(event) => setStatus(event.target.value as PaymentStatus)} disabled={saving}><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="waived">Waived</option></select></label>
+      </div>
+      {status === "waived" && <p className="payment-hint">A waived charge is still recorded — enter 0 if there is nothing to bill.</p>}
+      {error && <div className="workspace-error" role="alert"><span>{error}</span></div>}
+      <button className="submit-result-button" disabled={saving}>{saving ? <><span className="spinner" />Saving…</> : "Save price & payment"}</button>
+    </form> : <p className="payment-hint">Only billing and {kind === "drug" ? "pharmacist" : "lab technician"} staff can change the price or payment status.</p>}
+  </div>;
 }
 
 function WorkspaceIntro({ eyebrow, title, description, count, loading, onRefresh }: { eyebrow: string; title: string; description: string; count?: number; loading: boolean; onRefresh: () => void }) {
