@@ -6,12 +6,14 @@ import {
   formatDate,
   meditrustApi,
   type FacilityPrescription,
+  type FinanceStats,
+  type FinanceStatsSection,
   type LabRequest,
   type PaginationMeta,
   type PaymentStatus,
   type StaffRole,
 } from "../lib/meditrust";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
 type WorkspaceProps = {
   facilityId: string;
@@ -191,6 +193,148 @@ export function PharmacyWorkspace({ facilityId, role, onError, notify }: Workspa
         <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.forward_status === "dispensed"} kind="drug" onSubmit={setPayment} />
         <div className="dispense-panel"><span><Icon name="check" /></span><div><strong>{selected.forward_status === "dispensed" ? "Dispensing complete" : selected.payment_status === "unpaid" ? "Payment outstanding" : "Ready to dispense"}</strong><p>{selected.forward_status === "dispensed" ? "This prescription has been marked as dispensed." : selected.payment_status === "unpaid" ? "Settle or waive the payment above before dispensing." : "Confirm only after the medication has been prepared and handed to the patient."}</p></div><button disabled={dispensing || selected.forward_status === "dispensed" || selected.payment_status === "unpaid"} onClick={() => void dispense()}>{dispensing ? "Updating…" : selected.forward_status === "dispensed" ? "Dispensed" : "Mark as dispensed"}</button></div>
       </> : <AncillaryEmpty title="Select a prescription" body="Medication details and dispensing actions will appear here." />}</section>
+    </div>
+  </section>;
+}
+
+export function FinanceOverviewWorkspace({ onError }: { onError: (reason: unknown) => void }) {
+  const [stats, setStats] = useState<FinanceStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | "">("");
+
+  const loadStats = useCallback(async () => {
+    setLoading(true);
+    try {
+      setStats(await meditrustApi.getFinanceStats({ from: from || undefined, to: to || undefined, paymentStatus: paymentStatus || undefined }));
+    } catch (reason) { onError(reason); }
+    finally { setLoading(false); }
+  }, [from, to, paymentStatus, onError]);
+
+  useEffect(() => { void Promise.resolve().then(loadStats); }, [loadStats]);
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) { event.preventDefault(); void loadStats(); }
+  function clearFilters() { setFrom(""); setTo(""); setPaymentStatus(""); }
+
+  return <section className="ancillary-workspace finance-overview">
+    <WorkspaceIntro eyebrow="Finance operations" title="Billing overview" description="Collected, outstanding and waived amounts for prescriptions and laboratory requests forwarded to your facility." count={stats ? stats.prescriptions.total + stats.lab_requests.total : undefined} loading={loading} onRefresh={() => void loadStats()} />
+    <form className="finance-filters" onSubmit={applyFilters}>
+      <label>From<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} disabled={loading} /></label>
+      <label>To<input type="date" value={to} onChange={(event) => setTo(event.target.value)} disabled={loading} /></label>
+      <label>Payment status<select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus | "")} disabled={loading}><option value="">All</option><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="waived">Waived</option></select></label>
+      <div className="finance-filter-actions"><button className="secondary-button" type="submit" disabled={loading}>Apply filters</button>{(from || to || paymentStatus) && <button type="button" className="text-button" onClick={clearFilters} disabled={loading}>Clear</button>}</div>
+    </form>
+    {loading && !stats ? <AncillaryLoading /> : stats ? <>
+      <section className="stats-grid role-stats">
+        <article className="stat-card"><div className="stat-top"><span className="stat-icon green"><Icon name="wallet" /></span></div><strong>{formatAmount(String(stats.combined.total_collected))}</strong><p>Total collected</p><span className="stat-note">Paid across prescriptions &amp; labs</span></article>
+        <article className="stat-card"><div className="stat-top"><span className="stat-icon orange"><Icon name="clock" /></span></div><strong>{formatAmount(String(stats.combined.total_outstanding))}</strong><p>Total outstanding</p><span className="stat-note">Still unpaid</span></article>
+        <article className="stat-card"><div className="stat-top"><span className="stat-icon purple"><Icon name="check" /></span></div><strong>{formatAmount(String(stats.combined.total_waived))}</strong><p>Total waived</p><span className="stat-note">Charges waived</span></article>
+        <article className="stat-card"><div className="stat-top"><span className="stat-icon blue"><Icon name="file" /></span></div><strong>{stats.prescriptions.total + stats.lab_requests.total}</strong><p>Billed records</p><span className="stat-note">{stats.prescriptions.total} prescriptions · {stats.lab_requests.total} lab requests</span></article>
+      </section>
+      <div className="finance-breakdown-grid">
+        <FinanceBreakdownCard title="Prescriptions" icon="file" stat={stats.prescriptions} />
+        <FinanceBreakdownCard title="Laboratory requests" icon="hospital" stat={stats.lab_requests} />
+      </div>
+    </> : <AncillaryEmpty title="No billing data" body="Billing figures will appear here once records are forwarded to your facility." />}
+  </section>;
+}
+
+function FinanceBreakdownCard({ title, icon, stat }: { title: string; icon: IconName; stat: FinanceStatsSection }) {
+  return <div className="panel finance-breakdown-card">
+    <div className="finance-breakdown-heading"><span className="finance-breakdown-icon"><Icon name={icon} size={18} /></span><h3>{title}</h3><span className="finance-breakdown-total">{stat.total} total</span></div>
+    <div className="finance-breakdown-rows">
+      <div><Status value="paid" /><strong>{stat.paid.count}</strong><small>{formatAmount(String(stat.paid.amount))}</small></div>
+      <div><Status value="unpaid" /><strong>{stat.unpaid.count}</strong><small>{formatAmount(String(stat.unpaid.amount))}</small></div>
+      <div><Status value="waived" /><strong>{stat.waived.count}</strong><small>{formatAmount(String(stat.waived.amount))}</small></div>
+    </div>
+  </div>;
+}
+
+export function FinancePrescriptionsWorkspace({ onError, notify }: { onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const [prescriptions, setPrescriptions] = useState<FacilityPrescription[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<FacilityPrescription | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadPrescriptions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await meditrustApi.listFinancePrescriptions(page);
+      setPrescriptions(result.data);
+      setMeta(result.meta);
+      setSelected((current) => current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null);
+    } catch (reason) { onError(reason); }
+    finally { setLoading(false); }
+  }, [onError, page]);
+
+  useEffect(() => { void Promise.resolve().then(loadPrescriptions); }, [loadPrescriptions]);
+
+  async function setPayment(payload: { amount: number; payment_status: PaymentStatus }) {
+    if (!selected) return;
+    const updated = await meditrustApi.setPrescriptionPayment(selected.id, payload);
+    setSelected((current) => current && current.id === updated.id ? { ...current, ...updated } : current);
+    setPrescriptions((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    notify("Payment updated");
+  }
+
+  return <section className="ancillary-workspace pharmacy-workspace">
+    <WorkspaceIntro eyebrow="Finance operations" title="Prescription billing" description="Set the price and record payment for prescriptions forwarded to your facility." count={meta?.total} loading={loading} onRefresh={() => void loadPrescriptions()} />
+    <div className="ancillary-layout">
+      <section className="ancillary-list-panel"><div className="ancillary-list-heading"><div><strong>Prescriptions</strong><span>{meta ? `${meta.from || 0}–${meta.to || 0} of ${meta.total}` : "Current facility"}</span></div><span className="live-indicator"><i />Live</span></div>
+        <div className="ancillary-list">{loading ? <AncillaryLoading /> : prescriptions.length ? prescriptions.map((prescription) => <button key={prescription.id} className={selected?.id === prescription.id ? "selected" : ""} onClick={() => setSelected(prescription)}><span className="ancillary-row-icon pharmacy"><Icon name="file" /></span><span><strong>{prescription.medication_name}</strong><small>{prescription.dosage} · {prescription.frequency} · {prescription.duration_days} days</small><em>{prescription.doctor?.name || "Prescribing doctor"}</em></span><Status value={prescription.payment_status} /></button>) : <AncillaryEmpty title="No prescriptions" body="Prescriptions forwarded to your facility will appear here." />}</div>
+        <Pagination meta={meta} page={page} loading={loading} onPage={setPage} />
+      </section>
+      <section className="ancillary-detail-panel">{selected ? <><header className="ancillary-detail-heading"><span className="pharmacy"><Icon name="file" size={21} /></span><div><small>Prescription</small><h2>{selected.medication_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.forward_status || selected.status} /></header>
+        <dl className="ancillary-facts prescription-facts"><div><dt>Dosage</dt><dd>{selected.dosage}</dd></div><div><dt>Frequency</dt><dd>{selected.frequency}</dd></div><div><dt>Duration</dt><dd>{selected.duration_days} days</dd></div><div><dt>Prescribing doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div className="wide"><dt>Instructions</dt><dd>{selected.instructions || "No special instructions"}</dd></div><div><dt>Issued</dt><dd>{formatDate(selected.issued_at)}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
+        <PaymentPanel key={selected.id} record={selected} canBill locked={selected.forward_status === "dispensed"} kind="drug" onSubmit={setPayment} />
+      </> : <AncillaryEmpty title="Select a prescription" body="Billing details will appear here." />}</section>
+    </div>
+  </section>;
+}
+
+export function FinanceLabRequestsWorkspace({ onError, notify }: { onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const [requests, setRequests] = useState<LabRequest[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<LabRequest | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadRequests = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await meditrustApi.listFinanceLabRequests(page);
+      setRequests(result.data);
+      setMeta(result.meta);
+      setSelected((current) => current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null);
+    } catch (reason) { onError(reason); }
+    finally { setLoading(false); }
+  }, [onError, page]);
+
+  useEffect(() => { void Promise.resolve().then(loadRequests); }, [loadRequests]);
+
+  async function setPayment(payload: { amount: number; payment_status: PaymentStatus }) {
+    if (!selected) return;
+    const updated = await meditrustApi.setLabRequestPayment(selected.id, payload);
+    setSelected((current) => current && current.id === updated.id ? { ...current, ...updated } : current);
+    setRequests((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
+    notify("Payment updated");
+  }
+
+  return <section className="ancillary-workspace">
+    <WorkspaceIntro eyebrow="Finance operations" title="Laboratory billing" description="Set the price and record payment for laboratory requests forwarded to your facility." count={meta?.total} loading={loading} onRefresh={() => void loadRequests()} />
+    <div className="ancillary-layout">
+      <section className="ancillary-list-panel">
+        <div className="ancillary-list-heading"><div><strong>Laboratory requests</strong><span>{meta ? `${meta.from || 0}–${meta.to || 0} of ${meta.total}` : "Current facility"}</span></div><span className="live-indicator"><i />Live</span></div>
+        <div className="ancillary-list">{loading ? <AncillaryLoading /> : requests.length ? requests.map((request) => <button key={request.id} className={selected?.id === request.id ? "selected" : ""} onClick={() => setSelected(request)}><span className="ancillary-row-icon"><Icon name="hospital" /></span><span><strong>{request.test_name}</strong><small>{request.doctor?.name || "Ordering doctor"} · {request.forwarded_to_facility?.name || "Not forwarded"}</small><em>{formatDate(request.ordered_at)}</em></span><Status value={request.payment_status} /></button>) : <AncillaryEmpty title="No laboratory requests" body="Requests forwarded to your facility will appear here." />}</div>
+        <Pagination meta={meta} page={page} loading={loading} onPage={setPage} />
+      </section>
+      <section className="ancillary-detail-panel">{selected ? <>
+        <header className="ancillary-detail-heading"><span><Icon name="hospital" size={21} /></span><div><small>Laboratory request</small><h2>{selected.test_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.status} /></header>
+        <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div><div><dt>Result</dt><dd>{selected.result?.resulted_at ? `Resulted · ${formatDate(selected.result.resulted_at)}` : "Not yet resulted"}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
+        <PaymentPanel key={selected.id} record={selected} canBill locked={selected.status === "resulted"} kind="test" onSubmit={setPayment} />
+      </> : <AncillaryEmpty title="Select a request" body="Billing details will appear here." />}</section>
     </div>
   </section>;
 }

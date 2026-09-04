@@ -10,7 +10,7 @@ import {
   type Visit, type Vitals,
 } from "../lib/meditrust";
 import { Icon, type IconName } from "./icons";
-import { LabTechWorkspace, PharmacyWorkspace } from "./ancillary-workspaces";
+import { FinanceLabRequestsWorkspace, FinanceOverviewWorkspace, FinancePrescriptionsWorkspace, LabTechWorkspace, PharmacyWorkspace } from "./ancillary-workspaces";
 
 type NavItem = { label: string; icon: IconName };
 type DoctorQueueFilter = "active" | "waiting" | "vitals_done" | "with_doctor" | "completed" | "cancelled";
@@ -32,9 +32,10 @@ const navigation: Record<StaffRole, NavItem[]> = {
   pharmacist: [{ label: "Overview", icon: "grid" }],
   lab: [{ label: "Overview", icon: "grid" }],
   lab_tech: [{ label: "Overview", icon: "grid" }],
+  finance: [{ label: "Overview", icon: "grid" }, { label: "Prescriptions", icon: "file" }, { label: "Lab requests", icon: "hospital" }],
 };
 
-const roleLabels: Record<StaffRole, string> = { reception: "Reception", nurse: "Nursing", doctor: "Doctor", pharmacy: "Pharmacy", pharmacist: "Pharmacy", lab: "Laboratory", lab_tech: "Lab technician" };
+const roleLabels: Record<StaffRole, string> = { reception: "Reception", nurse: "Nursing", doctor: "Doctor", pharmacy: "Pharmacy", pharmacist: "Pharmacy", lab: "Laboratory", lab_tech: "Lab technician", finance: "Finance" };
 
 export function DashboardApp() {
   const router = useRouter();
@@ -87,7 +88,7 @@ export function DashboardApp() {
   useEffect(() => { void Promise.resolve().then(refreshFacility); }, [refreshFacility]);
 
   const refreshQueue = useCallback(async () => {
-    if (!facilityId || !role || isPharmacyRole(role) || isLabRole(role)) return;
+    if (!facilityId || !role || isPharmacyRole(role) || isLabRole(role) || isFinanceRole(role)) return;
     setQueueLoading(true); setError("");
     try {
       const statuses = role === "doctor"
@@ -160,13 +161,16 @@ export function DashboardApp() {
       <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><button className="icon-button" onClick={() => { void refreshFacility(); void refreshQueue(); void refreshAppointments(); void refreshCheckInRequests(); }} aria-label="Refresh workspace"><Icon name="trend" /></button><span className="avatar avatar-small">{initials}</span></div></header>
       <div className="dashboard role-dashboard">
         {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
-        {active === "Overview" && !isPharmacyRole(role) && !isLabRole(role) && <RoleOverview session={session} facility={facility} queue={queue} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
+        {active === "Overview" && !isPharmacyRole(role) && !isLabRole(role) && !isFinanceRole(role) && <RoleOverview session={session} facility={facility} queue={queue} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
         {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onCheckInRequested={(request) => { setCheckInRequests((current) => [request, ...current.filter((item) => item.id !== request.id)]); notify(`Check-in code sent to ${request.patient.name}`); setActive("Check-in requests"); }} onError={reportError} />}
         {active === "Check-in requests" && role === "reception" && <CheckInRequests requests={checkInRequests} loading={checkInRequestsLoading} onRefresh={refreshCheckInRequests} onResolved={(id) => setCheckInRequests((current) => current.filter((item) => item.id !== id))} onCheckedIn={(visit) => { void refreshQueue(); notify(`${visit.patient.name} checked in`); }} onError={reportError} notify={notify} />}
         {active === "Appointments" && role === "doctor" && <AppointmentsPanel appointments={appointments} loading={appointmentsLoading} onRefresh={refreshAppointments} />}
         {active === "Visit queue" && <VisitQueue role={role} statusFilter={doctorQueueFilter} onStatusFilterChange={setDoctorQueueFilter} visits={queue} loading={queueLoading} selected={selectedVisit} onSelect={setSelectedVisit} onRefresh={refreshQueue} onVisitChanged={(visit) => { const visibleStatuses = role === "doctor" ? doctorQueueFilter === "active" ? ["waiting", "vitals_done"] : [doctorQueueFilter] : ["waiting"]; const remainsVisible = visibleStatuses.includes(visit.status as DoctorQueueFilter); setQueue((current) => remainsVisible ? current.map((item) => item.id === visit.id ? visit : item) : current.filter((item) => item.id !== visit.id)); setSelectedVisit(remainsVisible ? visit : null); notify(`Visit marked ${visit.status}`); }} onError={reportError} notify={notify} />}
         {isLabRole(role) && active === "Overview" && <LabTechWorkspace facilityId={facilityId} role={role} onError={reportError} notify={notify} />}
         {isPharmacyRole(role) && active === "Overview" && <PharmacyWorkspace facilityId={facilityId} role={role} onError={reportError} notify={notify} />}
+        {isFinanceRole(role) && active === "Overview" && <FinanceOverviewWorkspace onError={reportError} />}
+        {isFinanceRole(role) && active === "Prescriptions" && <FinancePrescriptionsWorkspace onError={reportError} notify={notify} />}
+        {isFinanceRole(role) && active === "Lab requests" && <FinanceLabRequestsWorkspace onError={reportError} notify={notify} />}
       </div>
     </main>
     <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{navItems.map((item) => <button key={item.label} className={active === item.label ? "active" : ""} onClick={() => navigate(item.label)}><span><Icon name={item.icon} size={20} />{((item.label === "Visit queue" && queue.length > 0) || (item.label === "Check-in requests" && checkInRequests.length > 0)) && <i />}</span><small>{item.label.replace("Patient ", "")}</small></button>)}<button onClick={() => setMenuOpen(true)}><span><Icon name="more" size={20} /></span><small>More</small></button></nav>
@@ -176,7 +180,7 @@ export function DashboardApp() {
 
 function RoleOverview({ session, facility, queue, loading, onNavigate, onSelect }: { session: Session; facility: Facility | null; queue: Visit[]; loading: boolean; onNavigate: (label: string) => void; onSelect: (visit: Visit) => void }) {
   const role = session.user.facility_staff.role;
-  if (isPharmacyRole(role) || isLabRole(role)) return null;
+  if (isPharmacyRole(role) || isLabRole(role) || isFinanceRole(role)) return null;
   const actionLabel = role === "reception" ? "Patient check-in" : "Visit queue";
   return <><section className="welcome-row"><div><p className="eyebrow">{new Intl.DateTimeFormat("en-NG", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good {dayPeriod()}, {firstName(session.user.name)}</h1><p className="subtext">{facility ? `${facility.name}${facility.address ? ` · ${facility.address}` : ""}` : role === "reception" ? "Manage arrivals and keep today’s patient flow moving." : role === "nurse" ? "Review waiting patients and capture accurate triage observations." : "Review the clinical queue and continue patient care."}</p></div><button className="primary-button" onClick={() => onNavigate(actionLabel)}><Icon name={role === "reception" ? "userPlus" : "clock"} size={18} />{role === "reception" ? "Find & check in patient" : role === "nurse" ? "Open triage queue" : "Open consultation queue"}</button></section>
     <section className="stats-grid role-stats"><article className="stat-card"><div className="stat-top"><span className="stat-icon blue"><Icon name="clock" /></span><span className="unread-chip">Live</span></div><strong>{loading ? "—" : queue.length}</strong><p>Patients waiting</p><span className="stat-note">{facility?.name || "Current facility queue"}</span></article><article className="stat-card"><div className="stat-top"><span className="stat-icon green"><Icon name="hospital" /></span></div><strong>{session.user.facility_staff.staff_code}</strong><p>Staff code</p><span className="stat-note">{roleLabels[role]} access</span></article><article className="stat-card"><div className="stat-top"><span className="stat-icon purple"><Icon name="check" /></span></div><strong>{facility?.status ? titleCase(facility.status) : "Active"}</strong><p>Facility status</p><span className="stat-note">{facility ? titleCase(facility.type) : "Facility-scoped access"}</span></article></section>
@@ -522,6 +526,7 @@ function LoadingState() { return <div className="role-loading"><span className="
 function EmptyState({ title, body }: { title: string; body: string }) { return <div className="empty-state role-empty"><Icon name="hospital" /><strong>{title}</strong><span>{body}</span></div>; }
 function isLabRole(role: StaffRole) { return role === "lab" || role === "lab_tech"; }
 function isPharmacyRole(role: StaffRole) { return role === "pharmacy" || role === "pharmacist"; }
+function isFinanceRole(role: StaffRole) { return role === "finance"; }
 function firstName(name: string) { return name.replace(/^Dr\.\s*/i, "").split(" ")[0]; }
 function titleCase(value: string) { return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function dayPeriod() { const hour = new Date().getHours(); return hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"; }

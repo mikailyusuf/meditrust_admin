@@ -1,4 +1,4 @@
-export type StaffRole = "reception" | "nurse" | "doctor" | "pharmacy" | "pharmacist" | "lab" | "lab_tech";
+export type StaffRole = "reception" | "nurse" | "doctor" | "pharmacy" | "pharmacist" | "lab" | "lab_tech" | "finance";
 
 export type FacilityStaff = {
   role: StaffRole;
@@ -134,6 +134,7 @@ export type LabRequest = {
   result?: LabResult | null;
   doctor?: Pick<AuthUser, "id" | "name" | "email" | "phone">;
   facility?: Pick<Facility, "id" | "type" | "name" | "address" | "phone">;
+  forwarded_to_facility?: Pick<Facility, "id" | "type" | "name" | "address" | "phone">;
 };
 
 export type PaginationMeta = {
@@ -156,6 +157,23 @@ export type UploadedFile = {
   url: string;
   format?: string;
   bytes?: number;
+};
+
+export type FinanceStatsBucket = { count: number; amount: number };
+
+export type FinanceStatsSection = {
+  total: number;
+  paid: FinanceStatsBucket;
+  unpaid: FinanceStatsBucket;
+  waived: FinanceStatsBucket;
+};
+
+export type FinanceStats = {
+  facility_ids: string[];
+  filters: { from: string | null; to: string | null; payment_status: PaymentStatus | null };
+  prescriptions: FinanceStatsSection;
+  lab_requests: FinanceStatsSection;
+  combined: { total_collected: number; total_outstanding: number; total_waived: number };
 };
 
 export type LabResultPayload = {
@@ -306,6 +324,16 @@ export const meditrustApi = {
   listFacilityPrescriptions: (facilityId: string, page: number, perPage = 20) => api<Paginated<FacilityPrescription>>(`/v1/facilities/${encodeURIComponent(facilityId)}/prescriptions?page=${page}&per_page=${perPage}`),
   dispensePrescription: (prescriptionId: string) => api<FacilityPrescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/dispense`, json("PATCH")),
   directory: (type: "pharmacy" | "lab") => api<Facility[]>(`/v1/facilities/directory?type=${type}`),
+  listFinancePrescriptions: (page: number, perPage = 20) => api<Paginated<FacilityPrescription>>(`/v1/facility/prescriptions?page=${page}&per_page=${perPage}`),
+  listFinanceLabRequests: (page: number, perPage = 20) => api<Paginated<LabRequest>>(`/v1/facility/lab-requests?page=${page}&per_page=${perPage}`),
+  getFinanceStats: (filters: { from?: string; to?: string; paymentStatus?: PaymentStatus }) => {
+    const query = new URLSearchParams();
+    if (filters.from) query.set("from", filters.from);
+    if (filters.to) query.set("to", filters.to);
+    if (filters.paymentStatus) query.set("payment_status", filters.paymentStatus);
+    const search = query.toString();
+    return api<FinanceStats>(`/v1/facility/finance/stats${search ? `?${search}` : ""}`);
+  },
 };
 
 const SESSION_KEY = "meditrust_session";

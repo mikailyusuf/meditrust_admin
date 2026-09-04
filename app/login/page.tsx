@@ -20,6 +20,8 @@ export default function LoginPage() {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [resetComplete, setResetComplete] = useState(false);
+  const [mustChange, setMustChange] = useState(false);
+  const [changeComplete, setChangeComplete] = useState(false);
   const [notice, setNotice] = useState("");
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -34,7 +36,17 @@ export default function LoginPage() {
       });
       const payload = await response.json().catch(() => null) as { success?: boolean; message?: string; data?: { user: AuthUser } } | null;
       if (!response.ok || !payload?.success || !payload.data?.user) throw new Error(payload?.message || "Unable to sign in.");
-      const supportedRoles = ["reception", "nurse", "doctor", "pharmacy", "pharmacist", "lab", "lab_tech"];
+      if (payload.data.user.must_change_password) {
+        setError("");
+        setNotice("");
+        setNewPassword("");
+        setPasswordConfirmation("");
+        setChangeComplete(false);
+        setMustChange(true);
+        setLoading(false);
+        return;
+      }
+      const supportedRoles = ["reception", "nurse", "doctor", "pharmacy", "pharmacist", "lab", "lab_tech", "finance"];
       if (!payload.data.user.facility_staff || !supportedRoles.includes(payload.data.user.facility_staff.role)) throw new Error("This account is not linked to a supported facility staff workspace.");
       saveSession({ user: payload.data.user }, remember);
       router.replace("/");
@@ -93,6 +105,44 @@ export default function LoginPage() {
     }
   }
 
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    if (!password) { setError("Enter your current password."); return; }
+    if (newPassword.length < 8) { setError("Your new password must contain at least 8 characters."); return; }
+    if (newPassword !== passwordConfirmation) { setError("The new passwords do not match."); return; }
+    if (newPassword === password) { setError("Your new password must be different from your current password."); return; }
+    setLoading(true);
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ current_password: password, password: newPassword, password_confirmation: passwordConfirmation }),
+      });
+      const payload = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+      if (!response.ok || !payload?.success) throw new Error(payload?.message || "Unable to change your password.");
+      setNotice(payload.message || "Your password has been changed.");
+      setChangeComplete(true);
+      setPassword("");
+      setNewPassword("");
+      setPasswordConfirmation("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to change your password.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function backToSignIn() {
+    setMustChange(false);
+    setChangeComplete(false);
+    setPassword("");
+    setNewPassword("");
+    setPasswordConfirmation("");
+    setError("");
+    setNotice("");
+  }
+
   function closeRecovery() {
     setForgot(false);
     setSent(false);
@@ -122,7 +172,20 @@ export default function LoginPage() {
       <section className="login-form-panel">
         <div className="login-mobile-logo"><Image src="/meditrust360-logo-transparent.png" alt="MediTrust360" width={170} height={54} /></div>
         <div className="login-card">
-          {!forgot ? <>
+          {mustChange ? <>
+            <div className="login-heading"><span>Password update required</span><h2>Create a new password</h2><p>Your account needs a new password before you can continue.</p></div>
+            {changeComplete ? <div className="reset-success"><i>✓</i><h3>Password changed</h3><p>{notice} Sign in with your new password to continue.</p><button onClick={backToSignIn}>Return to sign in</button></div> : <>
+              {notice && <div className="reset-notice" role="status">{notice}</div>}
+              <form className="login-form" onSubmit={changePassword}>
+                <label>Current password<div className="password-field"><input type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required disabled={loading} /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button></div></label>
+                <label>New password<div className="password-field"><input type={showNewPassword ? "text" : "password"} autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required disabled={loading} /><button type="button" onClick={() => setShowNewPassword((value) => !value)}>{showNewPassword ? "Hide" : "Show"}</button></div></label>
+                <label>Confirm new password<input type={showNewPassword ? "text" : "password"} autoComplete="new-password" minLength={8} value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required disabled={loading} /></label>
+                {error && <div className="login-error" role="alert">{error}</div>}
+                <button className="login-submit" disabled={loading}>{loading ? <><span className="spinner" /> Updating password…</> : <>Update password <span>→</span></>}</button>
+                <button className="reset-text-button" type="button" disabled={loading} onClick={backToSignIn}>Cancel and return to sign in</button>
+              </form>
+            </>}
+          </> : !forgot ? <>
             <div className="login-heading"><span>Welcome back</span><h2>Sign in to your workspace</h2><p>Your workspace adapts to your facility role.</p></div>
             <form onSubmit={signIn} className="login-form">
               <label>Email address<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@clinic.com" required /></label>
