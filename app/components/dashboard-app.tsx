@@ -275,9 +275,11 @@ function CheckInRequestDetail({ request, onResolved, onCheckedIn, onError, notif
 }
 
 function VisitQueue({ role, statusFilter, onStatusFilterChange, visits, loading, selected, onSelect, onRefresh, onVisitChanged, onError, notify }: { role: StaffRole; statusFilter: DoctorQueueFilter; onStatusFilterChange: (status: DoctorQueueFilter) => void; visits: Visit[]; loading: boolean; selected: Visit | null; onSelect: (visit: Visit | null) => void; onRefresh: () => Promise<void>; onVisitChanged: (visit: Visit) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const [queueExpanded, setQueueExpanded] = useState(false);
+  const showQueue = role !== "doctor" || !selected || queueExpanded;
   const filterLabel = doctorQueueFilters.find((filter) => filter.value === statusFilter)?.label || "Queue";
   return <section className="role-workspace"><WorkspaceHeading eyebrow="Live patient flow" title="Visit queue" description={role === "reception" ? "Monitor checked-in patients and manage front-desk exceptions." : role === "nurse" ? "Select a waiting patient to record their vitals." : "Review active visits or filter the queue by clinical status."} action={<div className="queue-toolbar-actions">{role === "doctor" && <label><span>Visit status</span><select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as DoctorQueueFilter)} disabled={loading}>{doctorQueueFilters.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}</select></label>}<button className="secondary-button" onClick={() => void onRefresh()} disabled={loading}><Icon name="trend" size={17} />Refresh</button></div>} />
-    <div className="queue-workspace-grid"><div className="data-panel queue-list"><div className="data-toolbar"><strong>{visits.length} {role === "doctor" ? filterLabel.toLowerCase() : "waiting"}</strong><span>Oldest first</span></div>{loading ? <LoadingState /> : visits.length ? visits.map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} selected={selected?.id === visit.id} onClick={() => onSelect(visit)} />) : <EmptyState title={`No ${role === "doctor" ? filterLabel.toLowerCase() : "waiting"} visits`} body="No visits match the selected status." />}</div><div className="panel visit-detail-panel">{selected ? <VisitDetail key={selected.id} role={role} visit={selected} onVisitChanged={onVisitChanged} onError={onError} notify={notify} /> : <EmptyState title="Select a visit" body="Patient information and available actions will appear here." />}</div></div>
+    <div className={`queue-workspace-grid ${role === "doctor" ? "doctor-queue-layout" : ""}`}><div className="data-panel queue-list"><div className="data-toolbar"><strong>{visits.length} {role === "doctor" ? filterLabel.toLowerCase() : "waiting"}</strong><span>{role === "doctor" && selected ? <button type="button" className="queue-toggle" aria-expanded={showQueue} aria-controls="visit-queue-patients" onClick={() => setQueueExpanded((value) => !value)}>{showQueue ? "Hide queue" : "Change patient"}</button> : "Oldest first"}</span></div><div id="visit-queue-patients" hidden={!showQueue}>{loading ? <LoadingState /> : visits.length ? visits.map((visit, index) => <VisitRow key={visit.id} visit={visit} position={index + 1} selected={selected?.id === visit.id} onClick={() => { onSelect(visit); setQueueExpanded(false); }} />) : <EmptyState title={`No ${role === "doctor" ? filterLabel.toLowerCase() : "waiting"} visits`} body="No visits match the selected status." />}</div></div><div className="panel visit-detail-panel">{selected ? <VisitDetail key={selected.id} role={role} visit={selected} onVisitChanged={onVisitChanged} onError={onError} notify={notify} /> : <EmptyState title="Select a visit" body="Patient information and available actions will appear here." />}</div></div>
   </section>;
 }
 
@@ -344,25 +346,64 @@ function DoctorWorkspace({ visit, onComplete, completing, onError, notify }: { v
 function EncounterCreate({ visitId, onCreated, onError }: { visitId: string; onCreated: (encounter: Encounter) => void; onError: (reason: unknown) => void }) {
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); const data = new FormData(event.currentTarget); try { onCreated(await meditrustApi.createEncounter(visitId, { symptoms: String(data.get("symptoms")), assessment: String(data.get("assessment")), diagnosis: String(data.get("diagnosis")) })); } catch (reason) { onError(reason); } finally { setBusy(false); } }
-  return <form className="clinical-form" onSubmit={submit}><div className="section-title compact"><h3>Start encounter</h3><p>Capture the initial clinical assessment.</p></div><label>Symptoms<textarea name="symptoms" rows={3} required placeholder="Presenting symptoms and duration" /></label><label>Assessment<textarea name="assessment" rows={3} required placeholder="Clinical assessment" /></label><label>Diagnosis<input name="diagnosis" required placeholder="Working diagnosis" /></label><button className="modal-primary" disabled={busy}>{busy ? "Starting…" : "Start encounter"}</button></form>;
+  return <form className="clinical-form" onSubmit={submit}><div className="section-title compact"><h3>Start encounter</h3><p>Capture your initial assessment to start a draft and unlock AI review.</p></div><label>Symptoms<textarea name="symptoms" rows={3} required placeholder="Presenting symptoms and duration" /></label><label>Assessment<textarea name="assessment" rows={3} required placeholder="Clinical assessment" /></label><label>Diagnosis<input name="diagnosis" required placeholder="Working diagnosis" /></label><button className="modal-primary" disabled={busy}>{busy ? "Starting…" : "Start encounter"}</button></form>;
 }
 
 function EncounterEditor({ encounter, onChange, onError, notify }: { encounter: Encounter; onChange: (encounter: Encounter) => void; onError: (reason: unknown) => void; notify: (message: string) => void }) {
+  const [section, setSection] = useState("notes");
+  const sections = [["notes", "Clinical notes"], ["ai", "AI review"], ["prescriptions", "Prescriptions"], ["labs", "Lab requests"]];
+  const formId = `encounter-notes-${encounter.id}`;
   const [busy, setBusy] = useState(false); const [prescriptions, setPrescriptions] = useState<Prescription[]>(encounter.prescriptions ?? []); const [labRequests, setLabRequests] = useState<LabRequest[]>(encounter.lab_requests ?? []);
-  async function update(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); const data = new FormData(event.currentTarget); const values = { symptoms: String(data.get("symptoms")), assessment: String(data.get("assessment")), diagnosis: String(data.get("diagnosis")), notes: String(data.get("notes")) }; try { const updated = encounter.status === "draft" ? await meditrustApi.updateEncounter(encounter.id, values) : await meditrustApi.amendEncounter(encounter.id, values); onChange(updated); notify(encounter.status === "draft" ? "Draft saved" : "Amendment created"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
-  async function finalize() { setBusy(true); try { onChange(await meditrustApi.finalizeEncounter(encounter.id)); notify("Encounter finalized"); } catch (reason) { onError(reason); } finally { setBusy(false); } }
+  const [symptoms, setSymptoms] = useState(encounter.symptoms || ""); const [assessment, setAssessment] = useState(encounter.assessment || ""); const [diagnosis, setDiagnosis] = useState(encounter.diagnosis || "");
+  const [notes, setNotes] = useState(encounter.notes || "");
+  const [aiInput, setAiInput] = useState<{ symptoms: string; assessment: string }>();
+  const [aiSuggestion, setAiSuggestion] = useState<AiDiagnosisSuggestion>(); const [aiLoading, setAiLoading] = useState(false); const [aiError, setAiError] = useState("");
+  async function requestAiDiagnosis(encounterId: string, input: { symptoms: string; assessment: string }) {
+    setAiLoading(true); setAiError("");
+    try { const suggestion = await meditrustApi.getAiDiagnosisSuggestion(encounterId, input); setAiSuggestion(suggestion); setAiInput(input); }
+    catch (reason) { setAiError(reason instanceof Error ? reason.message : "Unable to generate the AI suggestion."); }
+    finally { setAiLoading(false); }
+  }
+  const dirty = symptoms !== (encounter.symptoms || "") || assessment !== (encounter.assessment || "") || diagnosis !== (encounter.diagnosis || "") || notes !== (encounter.notes || "");
+  const aiStale = !!aiInput && (aiInput.symptoms !== symptoms || aiInput.assessment !== assessment);
+  async function update(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const shouldFinalize = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "finalize";
+    setBusy(true);
+    try {
+      const values = { symptoms, assessment, diagnosis, notes };
+      const updated = encounter.status === "draft" ? await meditrustApi.updateEncounter(encounter.id, values) : await meditrustApi.amendEncounter(encounter.id, values);
+      onChange(updated);
+      if (shouldFinalize) {
+        onChange(await meditrustApi.finalizeEncounter(updated.id));
+        notify("Encounter saved and finalized");
+      } else notify(encounter.status === "draft" ? "Draft saved" : "Amendment created");
+    } catch (reason) { onError(reason); } finally { setBusy(false); }
+  }
   return <div className="encounter-editor">
-    <form className="clinical-form encounter-form" onSubmit={update}>
-      <div className="encounter-form-heading"><span><Icon name="file" size={18} /></span><div><p>Clinical documentation</p><h3>{encounter.status === "draft" ? "Encounter draft" : "Finalized encounter"}</h3></div><span className={`record-status ${encounter.status}`}>{encounter.status}</span></div>
-      <div className="encounter-field-grid"><label>Symptoms<textarea name="symptoms" rows={3} defaultValue={encounter.symptoms || ""} required /></label><label>Assessment<textarea name="assessment" rows={3} defaultValue={encounter.assessment || ""} required /></label></div>
-      <label>Diagnosis<input name="diagnosis" defaultValue={encounter.diagnosis || ""} required /></label>
-      <label>Clinical notes<textarea name="notes" rows={3} defaultValue={encounter.notes || ""} placeholder="Treatment plan, follow-up instructions and patient advice" /></label>
-      <div className="form-actions"><button className="secondary-button" disabled={busy}>{encounter.status === "draft" ? "Save draft" : "Create amendment"}</button>{encounter.status === "draft" && <button type="button" className="primary-button" disabled={busy} onClick={() => void finalize()}>Finalize encounter</button>}</div>
-    </form>
-    <section className="clinical-orders-section">
+    <div className="encounter-workflow"><div><p className="eyebrow">Consultation workspace</p><h3>Clinical encounter</h3><p>Document your assessment, review AI insights and plan care.</p></div><span className={`record-status ${encounter.status}`}>{encounter.status}</span></div>
+    <nav className="encounter-section-nav" aria-label="Encounter sections">{sections.map(([value, label]) => <button key={value} type="button" aria-pressed={section === value} aria-controls={`encounter-section-${value}-${encounter.id}`} onClick={() => setSection(value)}>{label}{value === "prescriptions" && prescriptions.length > 0 && <span>{prescriptions.length}</span>}{value === "labs" && labRequests.length > 0 && <span>{labRequests.length}</span>}{value === "ai" && aiLoading && <span>Working…</span>}</button>)}</nav>
+    <div className="encounter-review-layout encounter-focused-layout" hidden={section !== "notes" && section !== "ai"}>
+    <div id={`encounter-section-notes-${encounter.id}`} hidden={section !== "notes"}><form id={formId} className="clinical-form encounter-form" onSubmit={update} hidden={section !== "notes"} onInvalid={() => setSection("notes")} aria-label="Clinical notes">
+      <div className="encounter-form-heading"><span><Icon name="file" size={18} /></span><div><p>Clinical documentation</p><h3>{encounter.status === "draft" ? "Encounter notes" : "Amend encounter"}</h3></div><small className="encounter-save-state" role="status">{busy ? "Saving…" : dirty ? "Unsaved changes" : "All changes saved"}</small></div>
+      <fieldset className="encounter-fields" disabled={busy}>
+      <div className="encounter-field-grid"><label>Presenting symptoms<textarea name="symptoms" rows={5} value={symptoms} onChange={(event) => setSymptoms(event.target.value)} required placeholder="Main concern, onset, duration and associated symptoms" /></label><label>Clinical assessment<textarea name="assessment" rows={5} value={assessment} onChange={(event) => setAssessment(event.target.value)} required placeholder="Examination findings and your clinical impression" /></label></div>
+      <label>Working diagnosis<input name="diagnosis" value={diagnosis} onChange={(event) => setDiagnosis(event.target.value)} required placeholder="Enter your diagnosis or review an AI suggestion" /><small className="encounter-field-hint">AI suggestions are added only when you choose to use them.</small></label>
+      <label>Care plan & clinical notes<textarea name="notes" rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Treatment plan, follow-up instructions and patient advice" /></label>
+      </fieldset>
+
+    </form></div>
+    <aside id={`encounter-section-ai-${encounter.id}`} className="encounter-ai-rail" hidden={section !== "ai"} aria-label="AI clinical assistant">
+      <div className="encounter-ai-context"><Icon name="sparkles" size={16} /><div><strong>A second look at your assessment</strong><p>Review the suggestions, then decide what belongs in your notes.</p></div></div>
+      {aiStale && <p className="encounter-ai-stale" role="status">Your symptoms or assessment have changed. Regenerate insights to review the latest notes.</p>}
+      <AiDiagnosisPanel encounterId={encounter.id} symptoms={symptoms} assessment={assessment} suggestion={aiSuggestion} loading={aiLoading} error={aiError} onRequest={requestAiDiagnosis} onApplyDiagnosis={!aiStale && !aiLoading && !busy ? (value) => { setDiagnosis(value); setSection("notes"); notify("AI diagnosis added to your notes. Review and save when ready."); } : undefined} />
+    </aside>
+    </div>
+    <section className="clinical-orders-section" hidden={section !== "prescriptions" && section !== "labs"}>
       <div className="clinical-orders-heading"><span><Icon name="sparkles" size={18} /></span><div><p>Next steps</p><h3>Prescription & diagnostic orders</h3><small>Create the patient’s medication and laboratory plan after documenting the encounter.</small></div></div>
-      <div className="orders-grid"><PrescriptionForm encounterId={encounter.id} items={prescriptions} onCreated={(value) => setPrescriptions((current) => [...current, value])} onUpdated={(value) => setPrescriptions((current) => current.map((item) => item.id === value.id ? value : item))} onError={onError} notify={notify} /><LabOrderForm encounterId={encounter.id} items={labRequests} onCreated={(value) => setLabRequests((current) => [...current, value])} onUpdated={(value) => setLabRequests((current) => current.map((item) => item.id === value.id ? value : item))} onError={onError} notify={notify} /></div>
+      <div className="orders-grid encounter-focused-orders"><div id={`encounter-section-prescriptions-${encounter.id}`} hidden={section !== "prescriptions"}><PrescriptionForm encounterId={encounter.id} items={prescriptions} onCreated={(value) => setPrescriptions((current) => [...current, value])} onUpdated={(value) => setPrescriptions((current) => current.map((item) => item.id === value.id ? value : item))} onError={onError} notify={notify} /></div><div id={`encounter-section-labs-${encounter.id}`} hidden={section !== "labs"}><LabOrderForm encounterId={encounter.id} items={labRequests} onCreated={(value) => setLabRequests((current) => [...current, value])} onUpdated={(value) => setLabRequests((current) => current.map((item) => item.id === value.id ? value : item))} onError={onError} notify={notify} /></div></div>
     </section>
+      <div className="encounter-save-bar"><small role="status">{busy ? "Saving…" : dirty ? "Unsaved changes · " : "All changes saved · "}{encounter.status === "draft" ? "Finalizing saves your notes and closes the draft." : "Save your edits as a new amendment."}</small><div className="form-actions"><button form={formId} type="submit" className="secondary-button" disabled={busy}>{busy ? "Saving…" : encounter.status === "draft" ? "Save draft" : "Create amendment"}</button>{encounter.status === "draft" && <button form={formId} type="submit" value="finalize" className="primary-button" disabled={busy}>Save & finalize</button>}</div></div>
   </div>;
 }
 
@@ -394,11 +435,11 @@ function Timeline({ items }: { items: TimelineItem[] }) {
   const [aiLoadingId, setAiLoadingId] = useState<string | null>(null);
   const [aiError, setAiError] = useState<{ encounterId: string; message: string } | null>(null);
 
-  async function requestAiDiagnosis(encounterId: string) {
+  async function requestAiDiagnosis(encounterId: string, input: { symptoms: string; assessment: string }) {
     setAiLoadingId(encounterId);
     setAiError(null);
     try {
-      const suggestion = await meditrustApi.getAiDiagnosisSuggestion(encounterId);
+      const suggestion = await meditrustApi.getAiDiagnosisSuggestion(encounterId, input);
       setAiSuggestions((current) => ({ ...current, [encounterId]: suggestion }));
     } catch (reason) {
       setAiError({ encounterId, message: reason instanceof Error ? reason.message : "Unable to generate the AI suggestion." });
@@ -424,7 +465,7 @@ function Timeline({ items }: { items: TimelineItem[] }) {
   })}</div>;
 }
 
-function TimelineDetails({ item, aiSuggestion, aiLoading, aiError, onRequestAi }: { item: TimelineItem; aiSuggestion?: AiDiagnosisSuggestion; aiLoading: boolean; aiError: string; onRequestAi: (encounterId: string) => Promise<void> }) {
+function TimelineDetails({ item, aiSuggestion, aiLoading, aiError, onRequestAi }: { item: TimelineItem; aiSuggestion?: AiDiagnosisSuggestion; aiLoading: boolean; aiError: string; onRequestAi: (encounterId: string, input: { symptoms: string; assessment: string }) => Promise<void> }) {
   const data = item.data as unknown as Record<string, unknown>;
   if (item.type === "vitals") return <div className="timeline-details-grid vitals-details">
     <TimelineField label="Blood pressure" value={`${displayValue(data.blood_pressure_systolic)}/${displayValue(data.blood_pressure_diastolic)} mmHg`} />
@@ -442,7 +483,7 @@ function TimelineDetails({ item, aiSuggestion, aiLoading, aiError, onRequestAi }
       <div className="timeline-details-grid"><TimelineField label="Symptoms" value={displayValue(data.symptoms)} wide /><TimelineField label="Assessment" value={displayValue(data.assessment)} wide /><TimelineField label="Diagnosis" value={displayValue(data.diagnosis)} /><TimelineField label="Notes" value={displayValue(data.notes)} wide /><TimelineField label="Finalized" value={data.finalized_at ? formatDate(String(data.finalized_at)) : "Not finalized"} /></div>
       {prescriptions.length > 0 && <div className="timeline-nested-orders"><strong>Prescriptions from this encounter</strong>{prescriptions.map((prescription, index) => <div key={String(prescription.id || index)}><span><b>{displayValue(prescription.medication_name)}</b><small>{displayValue(prescription.dosage)} · {displayValue(prescription.frequency)} · {displayValue(prescription.duration_days)} days</small></span><em>{displayValue(prescription.forward_status || prescription.status)}</em></div>)}</div>}
       {labRequests.length > 0 && <div className="timeline-nested-orders"><strong>Lab requests from this encounter</strong>{labRequests.map((labRequest, index) => <div key={String(labRequest.id || index)}><span><b>{displayValue(labRequest.test_name)}</b><small>{displayValue(labRequest.notes)}</small></span><em>{displayValue(labRequest.status)}</em></div>)}</div>}
-      {typeof data.id === "string" && <AiDiagnosisPanel encounterId={data.id} suggestion={aiSuggestion} loading={aiLoading} error={aiError} onRequest={onRequestAi} />}
+      {typeof data.id === "string" && <AiDiagnosisPanel encounterId={data.id} symptoms={String(data.symptoms || "")} assessment={String(data.assessment || "")} suggestion={aiSuggestion} loading={aiLoading} error={aiError} onRequest={onRequestAi} />}
     </div>;
   }
 
@@ -465,14 +506,16 @@ function TimelineDetails({ item, aiSuggestion, aiLoading, aiError, onRequestAi }
   return <div className="timeline-details-grid">{Object.entries(data).filter(([, value]) => typeof value !== "object").slice(0, 8).map(([label, value]) => <TimelineField key={label} label={titleCase(label)} value={displayValue(value)} />)}</div>;
 }
 
-function AiDiagnosisPanel({ encounterId, suggestion, loading, error, onRequest }: { encounterId: string; suggestion?: AiDiagnosisSuggestion; loading: boolean; error: string; onRequest: (encounterId: string) => Promise<void> }) {
+function AiDiagnosisPanel({ encounterId, symptoms, assessment, suggestion, loading, error, onRequest, onApplyDiagnosis }: { encounterId: string; symptoms: string; assessment: string; suggestion?: AiDiagnosisSuggestion; loading: boolean; error: string; onRequest: (encounterId: string, input: { symptoms: string; assessment: string }) => Promise<void>; onApplyDiagnosis?: (diagnosis: string) => void }) {
+  const ready = symptoms.trim().length > 0 && assessment.trim().length > 0;
   return <section className="ai-diagnosis-section">
     <header className="ai-diagnosis-heading">
       <span className="ai-diagnosis-icon"><Icon name="sparkles" size={17} /></span>
       <div><strong>AI diagnosis suggestion</strong><small>Clinical decision support based on this encounter and the patient timeline</small></div>
-      <button type="button" disabled={loading} onClick={() => void onRequest(encounterId)}>{loading ? "Generating…" : suggestion ? "Regenerate" : "Generate suggestion"}</button>
+      <button type="button" disabled={loading || !ready} onClick={() => void onRequest(encounterId, { symptoms, assessment })}>{loading ? "Getting help…" : suggestion ? "Regenerate" : "Get AI help"}</button>
     </header>
-    {!suggestion && !loading && !error && <p className="ai-diagnosis-intro">Generate a structured summary, differential diagnoses, red flags, and recommended next steps for clinician review.</p>}
+    {!suggestion && !loading && !error && !ready && <p className="ai-diagnosis-intro">Enter the presenting symptoms and clinical assessment to generate a suggestion.</p>}
+    {!suggestion && !loading && !error && ready && <p className="ai-diagnosis-intro">Generate a structured summary, differential diagnoses, red flags, and recommended next steps for clinician review.</p>}
     {loading && <div className="ai-diagnosis-loading" role="status" aria-live="polite">
       <div className="ai-loading-status"><span className="ai-loading-pulse"><Icon name="sparkles" size={15} /></span><p><strong>Generating clinical insights</strong><span>Reviewing the encounter, vital signs, laboratory records, and treatment history. This may take a moment.</span></p></div>
       <div className="ai-shimmer-summary"><span className="ai-shimmer-line short" /><span className="ai-shimmer-line" /><span className="ai-shimmer-line" /><span className="ai-shimmer-line medium" /></div>
@@ -480,8 +523,9 @@ function AiDiagnosisPanel({ encounterId, suggestion, loading, error, onRequest }
       <span className="sr-only">AI diagnosis suggestion is loading.</span>
     </div>}
     {error && <div className="ai-diagnosis-error"><strong>Suggestion unavailable</strong><span>{error}</span></div>}
-    {suggestion && <div className="ai-diagnosis-result">
+    {suggestion && !loading && <div className="ai-diagnosis-result">
       <div className="ai-diagnosis-meta"><span>Generated by {suggestion.model}</span><span>{formatDate(suggestion.generated_at)}</span></div>
+      {suggestion.diagnosis && <div className="ai-diagnosis-summary ai-diagnosis-working"><strong>Working diagnosis</strong><p>{suggestion.diagnosis}</p>{onApplyDiagnosis && <button type="button" className="secondary-button" onClick={() => onApplyDiagnosis(suggestion.diagnosis)}>Use this diagnosis</button>}</div>}
       <div className="ai-diagnosis-summary"><strong>Clinical summary</strong><p>{suggestion.summary}</p></div>
       <div className="ai-diagnosis-block"><strong>Differential diagnoses</strong><div className="ai-differentials">{suggestion.differential_diagnoses.map((item, index) => <article key={`${item.condition}-${index}`}><div><b>{item.condition}</b><em className={`ai-likelihood ${item.likelihood.toLowerCase()}`}>{titleCase(item.likelihood)}</em></div><p>{item.reasoning}</p></article>)}</div></div>
       <div className="ai-diagnosis-columns">

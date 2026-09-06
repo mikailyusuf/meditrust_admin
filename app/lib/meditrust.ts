@@ -189,6 +189,7 @@ export type AiDifferentialDiagnosis = {
 };
 
 export type AiDiagnosisSuggestion = {
+  diagnosis: string;
   summary: string;
   differential_diagnoses: AiDifferentialDiagnosis[];
   recommended_next_steps: string[];
@@ -302,7 +303,7 @@ export const meditrustApi = {
   getVitals: (patientId: string) => api<Vitals[]>(`/v1/patients/${encodeURIComponent(patientId)}/vitals`),
   getTimeline: (patientId: string) => api<TimelineItem[]>(`/v1/patients/${encodeURIComponent(patientId)}/timeline`),
   getDoctorAppointments: () => api<Appointment[]>("/v1/doctor/appointments"),
-  getAiDiagnosisSuggestion: (encounterId: string) => api<AiDiagnosisSuggestion>(`/v1/encounters/${encodeURIComponent(encounterId)}/ai-diagnosis-suggestion`, json("POST")),
+  getAiDiagnosisSuggestion: (encounterId: string, input: { symptoms: string; assessment: string }) => api<AiDiagnosisSuggestion>(`/v1/encounters/${encodeURIComponent(encounterId)}/ai-diagnosis-suggestion`, json("POST", input)),
   createEncounter: (visitId: string, values: Pick<Encounter, "symptoms" | "assessment" | "diagnosis">) => api<Encounter>(`/v1/visits/${encodeURIComponent(visitId)}/encounters`, json("POST", values)),
   updateEncounter: (encounterId: string, values: Partial<Pick<Encounter, "symptoms" | "assessment" | "diagnosis" | "notes">>) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}`, json("PATCH", values)),
   finalizeEncounter: (encounterId: string) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}/finalize`, json("PATCH")),

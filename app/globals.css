@@ -536,7 +536,10 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .form-actions button { min-height: 40px; }
 .encounter-editor { display: grid; gap: 30px; }
 .encounter-form { padding: 20px; border-radius: 16px; background: #fff; box-shadow: 0 10px 28px rgba(8,59,102,.055); gap: 15px; }
-.encounter-form-heading { margin: -20px -20px 3px; padding: 17px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #f7fbfd, #fff); display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 11px; }
+.encounter-form-heading { margin: -20px -20px 3px; padding: 17px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #f7fbfd, #fff); display: grid; grid-template-columns: 38px 1fr auto auto; align-items: center; gap: 11px; }
+.ai-help-button { min-height: 34px; padding: 0 13px; border-radius: 10px; border: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 9px; font-weight: 800; color: #fff; cursor: pointer; background: linear-gradient(135deg, var(--blue), #4b9fd0); transition: .18s ease; }
+.ai-help-button:hover:not(:disabled) { filter: brightness(1.05); }
+.ai-help-button:disabled { opacity: .5; cursor: not-allowed; }
 .encounter-form-heading > span:first-child, .clinical-orders-heading > span, .order-card-heading > span { width: 38px; height: 38px; border-radius: 11px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
 .encounter-form-heading > div { display: grid; gap: 3px; }
 .encounter-form-heading p, .clinical-orders-heading p { margin: 0; color: var(--blue); font-size: 7px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
@@ -631,6 +634,8 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .ai-diagnosis-summary, .ai-diagnosis-block { padding: 12px; border: 1px solid #e0e7ed; border-radius: 10px; background: rgba(255,255,255,.9); }
 .ai-diagnosis-summary > strong, .ai-diagnosis-block > strong { color: #425767; font-size: 7px; letter-spacing: .06em; text-transform: uppercase; }
 .ai-diagnosis-summary p, .ai-differentials p { margin: 7px 0 0; color: #354d5c; font-size: 7.5px; line-height: 1.65; }
+.ai-diagnosis-working { border-color: #b8dae8; background: rgba(240,248,252,.95); }
+.ai-diagnosis-working button { margin-top: 9px; min-height: 34px; font-size: 8px; }
 .ai-differentials { margin-top: 8px; display: grid; gap: 7px; }
 .ai-differentials article { padding: 10px; border-radius: 8px; background: #f8fafc; }
 .ai-differentials article > div { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
@@ -703,6 +708,7 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
   .encounter-field-grid, .order-card form > div { grid-template-columns: 1fr; }
   .encounter-form-heading { grid-template-columns: 36px 1fr; }
   .encounter-form-heading > .record-status { grid-column: 2; }
+  .encounter-form-heading > .ai-help-button { grid-column: 1 / -1; justify-content: center; }
   .clinical-orders-heading small { display: none; }
   .timeline-details-grid { padding: 14px; grid-template-columns: 1fr; }
   .timeline-details-grid > div.wide { grid-column: auto; }
@@ -913,3 +919,130 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 @media (max-width: 440px) { .ai-header .ai-status { display: none; }.ai-context { grid-template-columns: 1fr; }.ai-context-heading, .clear-chat { grid-column: auto; }.ai-suggestions { grid-template-columns: 1fr; }.ai-compose span { display: none; } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* Doctor encounter: documentation alongside clinician-reviewed AI insights. */
+.encounter-workflow { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.encounter-workflow h3 { margin: 5px 0; font-size: 20px; color: var(--navy); }
+.encounter-workflow p:not(.eyebrow) { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.encounter-review-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start; }
+.encounter-review-layout > * { min-width: 0; }
+.encounter-review-layout .encounter-form { margin: 0; overflow: hidden; border: 1px solid var(--border); }
+.encounter-review-layout .encounter-form-heading { grid-template-columns: 38px minmax(0, 1fr) auto; }
+.encounter-review-layout .encounter-form-heading h3 { font-size: 16px; }
+.encounter-review-layout .encounter-form-heading p { font-size: 9px; }
+.encounter-save-state { color: var(--muted); font-size: 10px; }
+.encounter-fields { display: grid; gap: 20px; padding: 0; margin: 0; border: 0; min-width: 0; }
+.encounter-fields label { font-size: 12px; gap: 8px; }
+.encounter-fields textarea, .encounter-fields input { font-size: 13px; padding: 12px; }
+.encounter-fields .encounter-field-grid { grid-template-columns: 1fr; gap: 20px; }
+.encounter-field-hint { color: var(--muted); font-size: 10px; font-weight: 400; line-height: 1.5; }
+.encounter-save-bar { display: grid; gap: 14px; border-top: 1px solid var(--border); padding-top: 16px; }
+.encounter-save-bar > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.encounter-save-bar .form-actions { flex-wrap: wrap; }
+.encounter-ai-rail { display: grid; gap: 12px; }
+.encounter-ai-context { display: flex; gap: 10px; padding: 16px; border: 1px solid #e1ddef; border-radius: 12px; background: #f8f6fd; color: #5a4ca0; }
+.encounter-ai-context > svg { flex-shrink: 0; margin-top: 2px; }
+.encounter-ai-context strong { font-size: 12px; }
+.encounter-ai-context p { margin: 5px 0 0; font-size: 11px; line-height: 1.6; color: #6b6581; }
+.encounter-ai-stale { margin: 0; padding: 12px; background: #fff8e8; border: 1px solid #ecdbb3; border-radius: 10px; color: #78591b; font-size: 12px; line-height: 1.6; }
+.encounter-ai-rail .ai-diagnosis-section { margin: 0; }
+.encounter-ai-rail .ai-diagnosis-heading { grid-template-columns: 34px minmax(0, 1fr); }
+.encounter-ai-rail .ai-diagnosis-heading button { grid-column: 1 / -1; font-size: 12px; min-height: 40px; }
+.encounter-ai-rail .ai-diagnosis-heading strong { font-size: 13px; }
+.encounter-ai-rail .ai-diagnosis-heading small, .encounter-ai-rail .ai-diagnosis-intro { font-size: 11px; }
+.encounter-ai-rail .ai-diagnosis-intro { padding: 0 14px 16px; }
+.encounter-ai-rail .ai-diagnosis-columns { grid-template-columns: 1fr; }
+.encounter-ai-rail .ai-diagnosis-result p, .encounter-ai-rail .ai-diagnosis-result li, .encounter-ai-rail .ai-differentials b { font-size: 12px; line-height: 1.65; }
+.encounter-ai-rail .ai-diagnosis-block > strong, .encounter-ai-rail .ai-diagnosis-summary > strong, .encounter-ai-rail .ai-disclaimer span, .encounter-ai-rail .ai-diagnosis-error span { font-size: 11px; }
+.encounter-ai-rail .ai-diagnosis-meta { font-size: 10px; flex-wrap: wrap; }
+.encounter-ai-rail .ai-diagnosis-working button { font-size: 11px; }
+@media (max-width: 1100px) {
+  .encounter-review-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 540px) {
+  .encounter-workflow { align-items: flex-start; }
+  .encounter-workflow h3 { font-size: 17px; }
+  .encounter-review-layout .encounter-form-heading { grid-template-columns: 38px minmax(0, 1fr); }
+  .encounter-save-state { grid-column: 2; }
+  .encounter-save-bar .form-actions button { flex: 1; }
+}
+
+/* Size clinical columns against their panel, not the browser viewport. */
+.doctor-queue-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+.doctor-queue-layout > .queue-list { max-height: 240px; overflow-y: auto; }
+.doctor-queue-layout > .queue-list .data-toolbar { position: sticky; top: 0; z-index: 1; background: #fff; }
+.doctor-queue-layout > .visit-detail-panel { min-width: 0; padding: clamp(20px, 3vw, 40px); }
+.doctor-clinical { container: consultation / inline-size; gap: 28px; }
+.doctor-clinical .encounter-editor { gap: 36px; }
+.doctor-clinical .clinical-form { padding: 28px; gap: 24px; background: #fff; box-shadow: none; }
+.doctor-clinical .encounter-form-heading { margin: -28px -28px 0; padding: 24px 28px; background: #fff; }
+.doctor-clinical .clinical-form label, .doctor-clinical .order-card form label { min-width: 0; gap: 10px; font-size: 13px; line-height: 1.5; }
+.doctor-clinical .clinical-form input, .doctor-clinical .clinical-form textarea,
+.doctor-clinical .order-card input, .doctor-clinical .order-card textarea,
+.doctor-clinical .order-card select, .doctor-clinical .created-order select {
+  min-width: 0; min-height: 48px; padding: 12px 14px; font: inherit; font-size: 14px; line-height: 1.6; background: #fff;
+}
+.doctor-clinical .clinical-form textarea { min-height: 144px; }
+.doctor-clinical .encounter-fields, .doctor-clinical .encounter-field-grid { gap: 26px; }
+.doctor-clinical .encounter-field-hint, .doctor-clinical .encounter-save-state { font-size: 12px; }
+.doctor-clinical .encounter-save-bar { gap: 20px; padding-top: 24px; }
+.doctor-clinical .form-actions { gap: 12px; }
+.doctor-clinical .form-actions button, .doctor-clinical .modal-primary { min-height: 46px; font-size: 13px; padding: 12px 20px; }
+.doctor-clinical .orders-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.doctor-clinical .order-card { min-width: 0; box-shadow: none; }
+.doctor-clinical .order-card-heading { padding: 22px 24px; gap: 14px; }
+.doctor-clinical .order-card h4 { font-size: 16px; }
+.doctor-clinical .order-card-heading p, .doctor-clinical .clinical-orders-heading small { font-size: 12px; line-height: 1.6; }
+.doctor-clinical .clinical-orders-heading h3 { font-size: 18px; }
+.doctor-clinical .clinical-orders-heading p { font-size: 10px; }
+.doctor-clinical .order-card form, .doctor-clinical .created-order { padding: 24px; gap: 20px; }
+.doctor-clinical .order-card form > div { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 20px; }
+.doctor-clinical .order-card button { min-height: 46px; font-size: 13px; padding: 10px 16px; }
+.doctor-clinical .created-order strong { font-size: 14px; }
+.doctor-clinical .created-order span, .doctor-clinical .created-order em { font-size: 12px; overflow-wrap: anywhere; }
+.doctor-clinical .doctor-vitals { gap: 14px 24px; padding: 18px 20px; line-height: 1.6; }
+.doctor-clinical .doctor-vitals strong, .doctor-clinical .doctor-vitals span, .doctor-clinical .doctor-vitals small { font-size: 12px; }
+.doctor-clinical .ai-diagnosis-heading { padding: 20px; gap: 14px; }
+.doctor-clinical .ai-diagnosis-result { padding: 0 20px 20px; gap: 16px; overflow-wrap: anywhere; }
+.doctor-clinical .ai-diagnosis-summary, .doctor-clinical .ai-diagnosis-block { padding: 18px; }
+.doctor-clinical .ai-diagnosis-intro { padding: 0 20px 20px; font-size: 12px; }
+.doctor-clinical .timeline-details summary { padding-block: 20px; font-size: 14px; }
+.doctor-clinical .timeline-details summary span { font-size: 12px; }
+@container consultation (min-width: 960px) {
+  .encounter-review-layout { grid-template-columns: minmax(0, 1.4fr) minmax(360px, 1fr); }
+  .doctor-clinical .orders-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container consultation (max-width: 540px) {
+  .doctor-clinical .clinical-form { padding: 20px; }
+  .doctor-clinical .encounter-form-heading { margin: -20px -20px 0; padding: 20px; grid-template-columns: 38px minmax(0, 1fr); }
+  .encounter-save-state { grid-column: 2; }
+  .doctor-clinical .order-card form, .doctor-clinical .created-order { padding: 20px; }
+  .doctor-clinical .form-actions { flex-direction: column; }
+}
+
+/* Focused encounter sections retain their form state while hidden. */
+.doctor-clinical [hidden], .doctor-queue-layout [hidden] { display: none !important; }
+.queue-toggle { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: #fff; color: var(--blue); font: inherit; font-size: 12px; cursor: pointer; }
+.encounter-section-nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: #f2f6f8; border: 1px solid var(--border); border-radius: 12px; }
+.encounter-section-nav button { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.encounter-section-nav button[aria-pressed="true"] { background: #fff; color: var(--blue); border-color: var(--border); box-shadow: 0 2px 5px #12354b08; }
+.encounter-section-nav button:hover { color: var(--blue); }
+.encounter-section-nav button:focus-visible, .queue-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.encounter-section-nav button span { border-radius: 20px; background: var(--blue-soft); padding: 2px 7px; font-size: 11px; }
+.doctor-clinical .encounter-focused-layout, .doctor-clinical .encounter-focused-orders { grid-template-columns: minmax(0, 1fr); }
+.doctor-clinical .encounter-editor { gap: 20px; }
+.doctor-clinical .encounter-editor > .encounter-save-bar { position: sticky; bottom: 12px; z-index: 5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; padding: 16px 20px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 5px 24px #16324b12; }
+.doctor-clinical .encounter-editor > .clinical-orders-section { border-top: 0; padding-top: 0; }
+.doctor-clinical .encounter-focused-layout .clinical-form textarea { min-height: 112px; }
+@container consultation (min-width: 720px) {
+  .doctor-clinical .encounter-focused-layout .encounter-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .doctor-clinical .encounter-focused-layout .ai-diagnosis-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .doctor-clinical .encounter-focused-layout .ai-diagnosis-heading { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .doctor-clinical .encounter-focused-layout .ai-diagnosis-heading button { grid-column: auto; }
+}
+@media (max-width: 540px) {
+  .encounter-section-nav { display: grid; grid-template-columns: 1fr 1fr; }
+  .encounter-section-nav button { padding: 8px; font-size: 12px; }
+  .doctor-clinical .encounter-editor > .encounter-save-bar { bottom: 8px; padding: 12px; gap: 10px; }
+  .doctor-clinical .encounter-save-bar .form-actions { width: 100%; flex-direction: row; }
+}
