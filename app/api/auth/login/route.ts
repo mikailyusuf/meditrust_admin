@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const backend = await fetch(`${API_BASE_URL}/v1/auth/login`, {
+    const backend = await fetch(`${API_BASE_URL}/v1/auth/staff/login`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ identifier: body.identifier, password: body.password }),
