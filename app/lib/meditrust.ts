@@ -56,14 +56,14 @@ export type Vitals = {
   visit_id: string;
   patient_id: string;
   recorded_by: string;
-  blood_pressure_systolic: number;
-  blood_pressure_diastolic: number;
-  temperature: number | string;
-  pulse: number;
-  respiratory_rate: number;
-  spo2: number;
-  weight: number | string;
-  height: number | string;
+  blood_pressure_systolic: number | null;
+  blood_pressure_diastolic: number | null;
+  temperature: number | string | null;
+  pulse: number | null;
+  respiratory_rate: number | null;
+  spo2: number | null;
+  weight: number | string | null;
+  height: number | string | null;
   recorded_at: string;
 };
 
@@ -299,11 +299,11 @@ export const meditrustApi = {
   resendCheckInOtp: (checkInRequestId: string) => api<{ otp_sent: boolean }>(`/v1/check-in-requests/${encodeURIComponent(checkInRequestId)}/resend-otp`, json("POST")),
   cancelCheckInRequest: (checkInRequestId: string, reason: string) => api<CheckInRequest>(`/v1/check-in-requests/${encodeURIComponent(checkInRequestId)}/cancel`, json("POST", { reason })),
   updateVisitStatus: (visitId: string, status: "completed" | "cancelled") => api<Visit>(`/v1/visits/${encodeURIComponent(visitId)}/status`, json("PATCH", { status })),
-  recordVitals: (visitId: string, values: Omit<Vitals, "id" | "visit_id" | "patient_id" | "recorded_by" | "recorded_at">) => api<Vitals>(`/v1/visits/${encodeURIComponent(visitId)}/vitals`, json("POST", values)),
+  recordVitals: (visitId: string, values: Partial<Omit<Vitals, "id" | "visit_id" | "patient_id" | "recorded_by" | "recorded_at">>) => api<Vitals>(`/v1/visits/${encodeURIComponent(visitId)}/vitals`, json("POST", values)),
   getVitals: (patientId: string) => api<Vitals[]>(`/v1/patients/${encodeURIComponent(patientId)}/vitals`),
   getTimeline: (patientId: string) => api<TimelineItem[]>(`/v1/patients/${encodeURIComponent(patientId)}/timeline`),
   getDoctorAppointments: () => api<Appointment[]>("/v1/doctor/appointments"),
-  getAiDiagnosisSuggestion: (encounterId: string, input: { symptoms: string; assessment: string }) => api<AiDiagnosisSuggestion>(`/v1/encounters/${encodeURIComponent(encounterId)}/ai-diagnosis-suggestion`, json("POST", input)),
+  getAiDiagnosisSuggestion: (patientId: string, symptoms: string) => api<AiDiagnosisSuggestion>(`/v1/patients/${encodeURIComponent(patientId)}/ai-diagnosis-suggestion`, json("POST", { symptoms })),
   createEncounter: (visitId: string, values: Pick<Encounter, "symptoms" | "assessment" | "diagnosis">) => api<Encounter>(`/v1/visits/${encodeURIComponent(visitId)}/encounters`, json("POST", values)),
   updateEncounter: (encounterId: string, values: Partial<Pick<Encounter, "symptoms" | "assessment" | "diagnosis" | "notes">>) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}`, json("PATCH", values)),
   finalizeEncounter: (encounterId: string) => api<Encounter>(`/v1/encounters/${encodeURIComponent(encounterId)}/finalize`, json("PATCH")),

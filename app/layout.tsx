@@ -10,7 +10,7 @@ const manrope = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Doctor workspace | MediTrust360",
+  title: "Care Workspace  | MediTrust360",
   description: "A calm, connected workspace for MediTrust360 clinicians.",
 };
 
