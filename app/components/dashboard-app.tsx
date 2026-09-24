@@ -11,6 +11,7 @@ import {
 } from "../lib/meditrust";
 import { Icon, type IconName } from "./icons";
 import { FinanceLabRequestsWorkspace, FinanceOverviewWorkspace, FinancePrescriptionsWorkspace, LabTechWorkspace, PharmacyWorkspace } from "./ancillary-workspaces";
+import { SupportWidget } from "./support-widget";
 
 type NavItem = { label: string; icon: IconName };
 type QueueFilter = "active" | "waiting" | "vitals_done" | "with_doctor" | "completed" | "cancelled";
@@ -188,6 +189,7 @@ export function DashboardApp() {
         <button type="button" className="logout-button" disabled={signingOut} onClick={() => void logout()}>{signingOut ? "Signing out…" : "Sign out"}</button>
       </div>
     </dialog>
+    <SupportWidget />
     {toast && <div className="toast" role="status"><Icon name="check" size={17} />{toast}</div>}
   </div>;
 }

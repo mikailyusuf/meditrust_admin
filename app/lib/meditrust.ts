@@ -152,6 +152,31 @@ export type Paginated<T> = {
   meta: PaginationMeta;
 };
 
+export type SupportCategory = "general" | "account" | "technical" | "billing" | "facility" | "clinical";
+export type SupportPriority = "low" | "normal" | "high" | "urgent";
+export type SupportMessage = {
+  id: string;
+  message: string;
+  is_admin_reply: boolean;
+  sender: { id: string; name: string };
+  created_at: string;
+};
+export type SupportTicket = {
+  id: string;
+  ticket_number: string;
+  subject: string;
+  category: SupportCategory;
+  priority: SupportPriority;
+  status: string;
+  messages_count: number;
+  last_message_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  requester?: { id: string; name: string; email: string; phone: string | null };
+  messages?: SupportMessage[];
+};
+
 export type UploadedFile = {
   public_id: string;
   url: string;
@@ -283,6 +308,15 @@ function json(method: "POST" | "PATCH", body?: unknown): RequestInit {
 }
 
 export const meditrustApi = {
+  listSupportTickets: (search = "", page = 1) => {
+    const query = new URLSearchParams({ per_page: "20", page: String(page) });
+    if (search.trim()) query.set("search", search.trim());
+    return api<Paginated<SupportTicket>>(`/v1/support/tickets?${query}`);
+  },
+  getSupportTicket: (id: string) => api<SupportTicket>(`/v1/support/tickets/${encodeURIComponent(id)}`),
+  createSupportTicket: (values: { subject: string; category: SupportCategory; priority: SupportPriority; message: string }) => api<SupportTicket>("/v1/support/tickets", json("POST", values)),
+  replyToSupportTicket: (id: string, message: string) => api<SupportTicket>(`/v1/support/tickets/${encodeURIComponent(id)}/messages`, json("POST", { message })),
+  closeSupportTicket: (id: string) => api<SupportTicket>(`/v1/support/tickets/${encodeURIComponent(id)}/close`, json("PATCH")),
   getMyFacility: () => api<Facility>("/v1/facilities/me"),
   searchPatients: (query: string) => api<PatientSummary[]>(`/v1/patients/search?query=${encodeURIComponent(query)}`),
   listVisits: async (facilityId: string, status = "waiting") => {
