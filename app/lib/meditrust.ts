@@ -28,6 +28,25 @@ export type PatientSummary = {
   phone: string | null;
 };
 
+export type WalkInPatientInput = {
+  name: string;
+  dob: string;
+  sex: "female" | "male";
+  phone: string;
+  consent_accepted: true;
+};
+
+export type WalkInPatientResult = {
+  patient: PatientSummary;
+  print_url: string;
+};
+
+export type WalkInCheckInInput = {
+  consent_accepted: true;
+  consent_method: "verbal" | "signed_form";
+  consent_reference?: string;
+};
+
 export type VisitStatus = "waiting" | "completed" | "cancelled" | string;
 
 export type Visit = {
@@ -319,6 +338,12 @@ export const meditrustApi = {
   closeSupportTicket: (id: string) => api<SupportTicket>(`/v1/support/tickets/${encodeURIComponent(id)}/close`, json("PATCH")),
   getMyFacility: () => api<Facility>("/v1/facilities/me"),
   searchPatients: (query: string) => api<PatientSummary[]>(`/v1/patients/search?query=${encodeURIComponent(query)}`),
+  registerWalkInPatient: (facilityId: string, values: WalkInPatientInput) => api<WalkInPatientResult>(`/v1/facilities/${encodeURIComponent(facilityId)}/walk-in-patients`, json("POST", values)),
+  checkInWalkInPatient: async (facilityId: string, patientId: string, values: WalkInCheckInInput) => {
+    const result = await api<Visit | { visit: Visit }>(`/v1/facilities/${encodeURIComponent(facilityId)}/walk-in-patients/${encodeURIComponent(patientId)}/check-in`, json("POST", values));
+    return "visit" in result ? result.visit : result;
+  },
+  walkInPrintPath: (facilityId: string, patientId: string) => `/api/backend/v1/facilities/${encodeURIComponent(facilityId)}/walk-in-patients/${encodeURIComponent(patientId)}/print`,
   listVisits: async (facilityId: string, status = "waiting") => {
     const result = await api<{ data: Visit[] }>(`/v1/facilities/${encodeURIComponent(facilityId)}/visits?status=${encodeURIComponent(status)}`);
     return result.data;

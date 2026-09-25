@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import {
   ApiError, ageFromDob, clearSession, formatDate, loadSession, meditrustApi,
   type AiDiagnosisSuggestion, type Appointment, type CheckInRequest, type Encounter, type Facility, type LabRequest, type PatientSummary,
-  type Prescription, type Session, type StaffRole, type TimelineItem,
+  type Prescription, type Session, type StaffRole, type TimelineItem, type WalkInPatientResult,
   type Visit, type Vitals,
 } from "../lib/meditrust";
 import { Icon, type IconName } from "./icons";
@@ -28,7 +28,7 @@ const queueFilters: { value: QueueFilter; label: string }[] = [
 const activeQueueStatuses = ["waiting", "vitals_done", "with_doctor"] as const;
 
 const navigation: Record<StaffRole, NavItem[]> = {
-  reception: [{ label: "Overview", icon: "grid" }, { label: "Patient check-in", icon: "userPlus" }, { label: "Check-in requests", icon: "userCheck" }, { label: "Visit queue", icon: "clock" }],
+  reception: [{ label: "Overview", icon: "grid" }, { label: "Patient check-in", icon: "userPlus" }, { label: "Register patient", icon: "userPlus" }, { label: "Check-in requests", icon: "userCheck" }, { label: "Visit queue", icon: "clock" }],
   nurse: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }],
   doctor: [{ label: "Overview", icon: "grid" }, { label: "Visit queue", icon: "clock" }, { label: "Appointments", icon: "calendar" }, { label: "Patient search", icon: "search" }],
   pharmacy: [{ label: "Overview", icon: "grid" }],
@@ -149,6 +149,7 @@ export function DashboardApp() {
 
   const initials = session.user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const navItems = navigation[role];
+  const mobileNavItems = role === "reception" ? navItems.slice(0, 3) : navItems;
 
   return <div className="app-shell role-app">
     <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
@@ -170,6 +171,7 @@ export function DashboardApp() {
         {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
         {active === "Overview" && !isPharmacyRole(role) && !isLabRole(role) && !isFinanceRole(role) && <RoleOverview session={session} facility={facility} queue={queue} queueFilter={queueFilter} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
         {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onCheckInRequested={(request) => { setCheckInRequests((current) => [request, ...current.filter((item) => item.id !== request.id)]); notify(`Check-in code sent to ${request.patient.name}`); setActive("Check-in requests"); }} onError={reportError} />}
+        {active === "Register patient" && role === "reception" && <WalkInRegistration facilityId={facilityId} onCheckedIn={(visit) => { void refreshQueue(); notify(`${visit.patient.name} checked in`); }} onOpenQueue={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} onError={reportError} />}
         {active === "Check-in requests" && role === "reception" && <CheckInRequests requests={checkInRequests} loading={checkInRequestsLoading} onRefresh={refreshCheckInRequests} onResolved={(id) => setCheckInRequests((current) => current.filter((item) => item.id !== id))} onCheckedIn={(visit) => { void refreshQueue(); notify(`${visit.patient.name} checked in`); }} onError={reportError} notify={notify} />}
         {active === "Appointments" && role === "doctor" && <AppointmentsPanel appointments={appointments} loading={appointmentsLoading} onRefresh={refreshAppointments} />}
         {active === "Visit queue" && <VisitQueue role={role} statusFilter={queueFilter} onStatusFilterChange={role === "doctor" ? setDoctorQueueFilter : setStaffQueueFilter} visits={queue} loading={queueLoading} selected={selectedVisit} onSelect={setSelectedVisit} onRefresh={refreshQueue} onVisitChanged={(visit) => { const visibleStatuses: readonly string[] = queueFilter === "active" ? activeQueueStatuses : [queueFilter]; const remainsVisible = visibleStatuses.includes(visit.status); setQueue((current) => remainsVisible ? current.map((item) => item.id === visit.id ? visit : item) : current.filter((item) => item.id !== visit.id)); setSelectedVisit(remainsVisible ? visit : null); if (role === "reception") notify(`Visit marked ${visit.status}`); }} onError={reportError} notify={notify} />}
@@ -180,7 +182,7 @@ export function DashboardApp() {
         {isFinanceRole(role) && active === "Lab requests" && <FinanceLabRequestsWorkspace onError={reportError} notify={notify} />}
       </div>
     </main>
-    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{navItems.map((item) => <button key={item.label} className={active === item.label ? "active" : ""} onClick={() => navigate(item.label)}><span><Icon name={item.icon} size={20} />{((item.label === "Visit queue" && queue.length > 0) || (item.label === "Check-in requests" && checkInRequests.length > 0)) && <i />}</span><small>{item.label.replace("Patient ", "")}</small></button>)}<button onClick={() => setMenuOpen(true)}><span><Icon name="more" size={20} /></span><small>More</small></button></nav>
+    <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{mobileNavItems.map((item) => <button key={item.label} className={active === item.label ? "active" : ""} onClick={() => navigate(item.label)}><span><Icon name={item.icon} size={20} />{((item.label === "Visit queue" && queue.length > 0) || (item.label === "Check-in requests" && checkInRequests.length > 0)) && <i />}</span><small>{item.label.replace("Patient ", "")}</small></button>)}<button onClick={() => setMenuOpen(true)}><span><Icon name="more" size={20} /></span><small>More</small></button></nav>
     <dialog ref={logoutDialogRef} className="app-modal confirmation-dialog" aria-labelledby="signout-title" aria-describedby="signout-description" onCancel={(event) => { if (signingOut) event.preventDefault(); }}>
       <h2 id="signout-title">Sign out?</h2>
       <p id="signout-description">You’ll need to sign in again to access your workspace.</p>
@@ -213,6 +215,79 @@ function PatientSearch({ role, facilityId, onCheckInRequested, onError }: { role
     <form className="patient-search-form" onSubmit={search}><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digital Health ID or patient name" aria-label="Patient search" /><button className="primary-button" disabled={loading}>{loading ? "Searching…" : "Search"}</button></form>
     <div className="search-workspace-grid"><div className="data-panel search-patient-list"><div className="data-toolbar"><strong>Search results</strong><span>{results.length} found</span></div>{loading ? <LoadingState /> : results.length ? results.map((patient) => <button key={patient.id} className={`patient-result ${selected?.id === patient.id ? "selected" : ""}`} onClick={() => void choose(patient)}><PatientAvatar patient={patient} /><span><strong>{patient.name}</strong><small>{patient.digital_health_id} · {ageFromDob(patient.dob)} years · {patient.sex}</small></span><Icon name="chevron" /></button>) : <EmptyState title="Search for a patient" body="Results will appear here." />}</div>
       <div className="panel patient-selection">{selected ? <><div className="selected-patient-head"><PatientAvatar patient={selected} large /><div><span>Patient confirmed</span><h2>{selected.name}</h2><p>{selected.digital_health_id}</p></div></div><dl className="patient-facts"><div><dt>Date of birth</dt><dd>{selected.dob}</dd></div><div><dt>Sex</dt><dd>{selected.sex}</dd></div><div><dt>Phone</dt><dd>{selected.phone || "Not provided"}</dd></div></dl>{role === "reception" ? <button className="modal-primary" disabled={checkingIn} onClick={checkIn}>{checkingIn ? "Sending code…" : "Confirm & send check-in code"} <Icon name="arrow" size={17} /></button> : <Timeline items={timeline} />}</> : <EmptyState title="Select a patient" body="Confirm the correct record before continuing." />}</div></div>
+  </section>;
+}
+
+function WalkInRegistration({ facilityId, onCheckedIn, onOpenQueue, onError }: { facilityId: string; onCheckedIn: (visit: Visit) => void; onOpenQueue: (visit: Visit) => void; onError: (reason: unknown) => void }) {
+  const [saving, setSaving] = useState(false);
+  const [registered, setRegistered] = useState<WalkInPatientResult | null>(null);
+  const [consentMethod, setConsentMethod] = useState<"verbal" | "signed_form">("verbal");
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [visit, setVisit] = useState<Visit | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    setSaving(true);
+    try {
+      const result = await meditrustApi.registerWalkInPatient(facilityId, {
+        name: String(values.get("name")).trim(),
+        dob: String(values.get("dob")),
+        sex: String(values.get("sex")) as "female" | "male",
+        phone: String(values.get("phone")).trim(),
+        consent_accepted: true,
+      });
+      setRegistered(result);
+      form.reset();
+    } catch (reason) { onError(reason); }
+    finally { setSaving(false); }
+  }
+
+  async function checkIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!registered || checkingIn) return;
+    const values = new FormData(event.currentTarget);
+    const consentReference = String(values.get("consent_reference") || "").trim();
+    if (consentMethod === "signed_form" && !consentReference) return;
+    setCheckingIn(true);
+    try {
+      const checkedInVisit = await meditrustApi.checkInWalkInPatient(facilityId, registered.patient.id, {
+        consent_accepted: true,
+        consent_method: consentMethod,
+        ...(consentMethod === "signed_form" ? { consent_reference: consentReference } : {}),
+      });
+      setVisit(checkedInVisit);
+      onCheckedIn(checkedInVisit);
+    } catch (reason) { onError(reason); }
+    finally { setCheckingIn(false); }
+  }
+
+  return <section className="role-workspace">
+    <WorkspaceHeading eyebrow="Front desk" title="Register a walk-in patient" description="Create a patient profile, provide their Digital Health ID, and check them in when they are ready." />
+    {registered ? <div className="panel walk-in-result" role="status">
+      <span className="walk-in-success"><Icon name="check" size={19} /></span>
+      <div><p className="eyebrow">Patient registered</p><h2>{registered.patient.name}</h2><p>Digital Health ID</p><strong className="walk-in-health-id">{registered.patient.digital_health_id}</strong></div>
+      <dl className="patient-facts"><div><dt>Date of birth</dt><dd>{registered.patient.dob}</dd></div><div><dt>Sex</dt><dd>{registered.patient.sex}</dd></div><div><dt>Phone</dt><dd>{registered.patient.phone || "Not provided"}</dd></div></dl>
+      <div className="walk-in-actions"><a className="secondary-button" href={meditrustApi.walkInPrintPath(facilityId, registered.patient.id)} target="_blank" rel="noopener noreferrer"><Icon name="file" size={17} />Open printable profile</a><button type="button" className="secondary-button" onClick={() => { setRegistered(null); setVisit(null); setConsentMethod("verbal"); }}>Register another patient</button></div>
+      {visit ? <div className="walk-in-checkin-complete"><span className="walk-in-success"><Icon name="check" size={19} /></span><div><h3>Patient checked in</h3><p>The visit is waiting in the queue.</p></div><button type="button" className="primary-button" onClick={() => onOpenQueue(visit)}>View visit queue</button></div> : <form className="walk-in-checkin" onSubmit={checkIn}>
+        <h3>Check in this patient</h3><p>Record how the patient consented before adding them to the waiting queue.</p>
+        <label>Consent method<select name="consent_method" value={consentMethod} onChange={(event) => setConsentMethod(event.target.value as "verbal" | "signed_form")}><option value="verbal">Verbal</option><option value="signed_form">Signed paper form</option></select></label>
+        {consentMethod === "signed_form" && <label>Consent reference<input name="consent_reference" type="text" maxLength={255} placeholder="Paper form or file reference" required /></label>}
+        <label className="walk-in-consent"><input name="check_in_consent" type="checkbox" required /><span>I confirm the patient accepted consent for this check-in.</span></label>
+        <button className="primary-button" disabled={checkingIn}>{checkingIn ? "Checking in…" : "Check in patient"}</button>
+      </form>}
+    </div> : <form className="panel walk-in-form" onSubmit={submit}>
+      <div className="panel-heading"><div><h2>Patient details</h2><p>Enter the patient’s details exactly as confirmed with them.</p></div></div>
+      <div className="walk-in-fields">
+        <label className="walk-in-full">Full name<input name="name" type="text" autoComplete="name" maxLength={255} placeholder="e.g. Amina Musa" required /></label>
+        <label>Date of birth<input name="dob" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
+        <label>Sex<select name="sex" defaultValue="" required><option value="" disabled>Select sex</option><option value="female">Female</option><option value="male">Male</option></select></label>
+        <label className="walk-in-full">Phone number<input name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="e.g. 08012345678" required /></label>
+        <label className="walk-in-consent walk-in-full"><input name="consent" type="checkbox" required /><span>I confirm the patient has accepted consent to register their profile.</span></label>
+      </div>
+      <div className="walk-in-form-actions"><button className="primary-button" disabled={saving}>{saving ? "Registering patient…" : "Register patient"}</button></div>
+    </form>}
   </section>;
 }
 

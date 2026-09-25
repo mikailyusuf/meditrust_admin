@@ -495,6 +495,42 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .patient-facts dt { color: var(--muted); font-size: 7px; font-weight: 700; text-transform: uppercase; }
 .patient-facts dd { margin: 0; color: var(--ink); font-size: 9px; font-weight: 750; text-transform: capitalize; }
 .patient-selection > .modal-primary { width: 100%; }
+.walk-in-form, .walk-in-result { max-width: 760px; }
+.walk-in-fields { padding: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.walk-in-fields label { min-width: 0; display: grid; gap: 8px; color: #425767; font-size: 11px; font-weight: 750; }
+.walk-in-fields .walk-in-full { grid-column: 1 / -1; }
+.walk-in-fields input:not([type="checkbox"]), .walk-in-fields select { width: 100%; min-height: 44px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; background: #fbfdfe; color: var(--ink); font-size: 12px; }
+.walk-in-fields input:focus, .walk-in-fields select:focus { outline: 3px solid rgba(8,126,174,.12); border-color: #83c0d7; }
+.walk-in-fields .walk-in-consent { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-weight: 650; }
+.walk-in-consent input { width: 17px; height: 17px; flex: 0 0 auto; margin: 0; accent-color: var(--blue); }
+.walk-in-form-actions { padding: 0 24px 24px; }
+.walk-in-result { padding: 26px; }
+.walk-in-success { width: 42px; height: 42px; margin-bottom: 17px; border-radius: 12px; background: var(--green-soft); color: #138b69; display: grid; place-items: center; }
+.walk-in-result h2 { margin-bottom: 7px; font-size: 22px; }
+.walk-in-result p:not(.eyebrow) { margin-bottom: 5px; color: var(--muted); font-size: 11px; }
+.walk-in-health-id { color: var(--navy); font-size: 27px; letter-spacing: .04em; }
+.walk-in-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.walk-in-actions a { text-decoration: none; }
+.walk-in-checkin, .walk-in-checkin-complete { margin-top: 25px; padding: 22px; border: 1px solid var(--border); border-radius: 13px; background: #fbfdfe; }
+.walk-in-checkin { display: grid; gap: 14px; }
+.walk-in-checkin h3, .walk-in-checkin-complete h3 { margin: 0; font-size: 15px; }
+.walk-in-checkin > p { margin: -7px 0 3px; color: var(--muted); font-size: 11px; }
+.walk-in-checkin label { display: grid; gap: 7px; color: #425767; font-size: 11px; font-weight: 750; }
+.walk-in-checkin input:not([type="checkbox"]), .walk-in-checkin select { width: 100%; min-height: 44px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--ink); font-size: 12px; }
+.walk-in-checkin .walk-in-consent { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-weight: 650; }
+.walk-in-checkin .primary-button { justify-self: start; }
+.walk-in-checkin-complete { display: flex; align-items: center; flex-wrap: wrap; gap: 13px; }
+.walk-in-checkin-complete .walk-in-success { margin: 0; }
+.walk-in-checkin-complete > div { flex: 1; min-width: 180px; }
+.walk-in-checkin-complete p { margin: 4px 0 0 !important; }
+@media (max-width: 600px) {
+  .walk-in-fields { grid-template-columns: 1fr; padding: 20px; }
+  .walk-in-fields .walk-in-full { grid-column: auto; }
+  .walk-in-form-actions { padding: 0 20px 20px; }
+  .walk-in-form-actions .primary-button, .walk-in-actions > *, .walk-in-checkin .primary-button, .walk-in-checkin-complete .primary-button { width: 100%; }
+  .walk-in-result { padding: 20px; }
+  .walk-in-checkin, .walk-in-checkin-complete { padding: 18px; }
+}
 .role-loading { min-height: 170px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--muted); font-size: 8px; }
 .role-empty { min-height: 220px; border: 0; background: transparent; }
 .visit-actions { margin-top: 22px; padding: 15px; border-radius: 12px; background: #fafcfd; display: flex; align-items: center; justify-content: space-between; }

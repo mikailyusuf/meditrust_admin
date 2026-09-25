@@ -16,7 +16,7 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
     const backend = await fetch(target, {
       method: request.method,
       headers: {
-        Accept: "application/json",
+        Accept: path.at(-1) === "print" ? "text/html" : "application/json",
         Authorization: `Bearer ${token}`,
         ...(request.headers.get("content-type") ? { "Content-Type": request.headers.get("content-type")! } : {}),
       },
