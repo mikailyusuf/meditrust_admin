@@ -103,6 +103,61 @@ export function PatientFullRecord({ patientId, onBack, backLabel = "Back" }: { p
   </section>;
 }
 
+/* ---------- Compact snapshot (visit queue) ---------- */
+
+export function PatientSnapshot({ patientId, onOpenRecord }: { patientId: string; onOpenRecord: () => void }) {
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState<{ key: string; record?: FullRecord; error?: string } | null>(null);
+  const key = `${patientId}:${attempt}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    meditrustApi.getPatientFullRecord(patientId, 5)
+      .then((record) => { if (!cancelled) setResult({ key, record }); })
+      .catch((reason: unknown) => { if (!cancelled) setResult({ key, error: reason instanceof Error ? reason.message : "Patient information could not be loaded." }); });
+    return () => { cancelled = true; };
+  }, [patientId, key]);
+
+  if (result?.key !== key) return <div className="pfr-snapshot pfr-snapshot-state"><span className="spinner" />Loading patient information…</div>;
+  if (!result.record) return <div className="pfr-snapshot pfr-snapshot-state"><span>{result.error}</span><button className="pfr-link" onClick={() => setAttempt((value) => value + 1)}>Try again</button></div>;
+
+  const { patient, snapshot, encounters, lab_requests: labs } = result.record;
+  const lastEncounter = encounters[0];
+  const pendingLabs = labs.filter((item) => item.status !== "completed" && item.status !== "cancelled");
+
+  return <section className="pfr-snapshot" aria-label="Patient clinical summary">
+    <AllergyBanner allergies={snapshot.allergies} />
+    <dl className="pfr-biometrics">
+      <Biometric label="Blood group" value={snapshot.blood_group ?? patient.blood_group} />
+      <Biometric label="Genotype" value={snapshot.genotype ?? patient.genotype} />
+      <Biometric label="Weight" value={patient.weight_kg ? `${patient.weight_kg} kg` : null} />
+      <Biometric label="BMI" value={patient.bmi ? String(patient.bmi) : null} />
+    </dl>
+    <div className="pfr-snapshot-grid">
+      <div>
+        <h3>Active conditions</h3>
+        {snapshot.chronic_conditions.length ? <ul>{snapshot.chronic_conditions.map((item) => <li key={item.id}><strong>{item.name}</strong><SourceTag source={item.source} /></li>)}</ul> : <p>None recorded</p>}
+      </div>
+      <div>
+        <h3>Current medications</h3>
+        {snapshot.current_medications.length ? <ul>{snapshot.current_medications.map((item) => <li key={`${item.source_kind}-${item.id}`}><span><strong>{item.name}</strong><small>{join(item.dosage, item.frequency)}</small></span><SourceTag source={item.source} /></li>)}</ul> : <p>None recorded</p>}
+      </div>
+      <div>
+        <h3>Last encounter</h3>
+        {lastEncounter ? <p><strong>{lastEncounter.diagnosis || "Undiagnosed"}</strong><small>{join(formatDay(lastEncounter.finalized_at || lastEncounter.created_at), lastEncounter.doctor?.name, lastEncounter.facility?.name)}</small></p> : <p>First encounter on MediTrust</p>}
+      </div>
+      <div>
+        <h3>Pending labs</h3>
+        {pendingLabs.length ? <ul>{pendingLabs.map((item) => <li key={item.id}><strong>{item.test_name}</strong><Chip status={item.status} /></li>)}</ul> : <p>No pending results</p>}
+      </div>
+    </div>
+    <footer>
+      <span>{join(patient.emergency_contact_name ? `Emergency contact: ${patient.emergency_contact_name}` : null, patient.emergency_contact_phone)}</span>
+      <LinkButton onClick={onOpenRecord}>View full record</LinkButton>
+    </footer>
+  </section>;
+}
+
 /* ---------- Overview ---------- */
 
 function Overview({ record, onOpen }: { record: FullRecord; onOpen: (tab: Tab) => void }) {

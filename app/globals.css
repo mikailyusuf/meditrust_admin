@@ -1447,3 +1447,25 @@ button.pfr-card-head { cursor: pointer; }
   .pfr-more { flex-direction: column; align-items: stretch; text-align: center; }
   .pfr-row-main small { white-space: normal; }
 }
+
+/* Patient snapshot inside the doctor's visit panel */
+.workspace-stack[hidden] { display: none; }
+.pfr-snapshot { margin: 0 0 22px; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: #fbfdfe; display: grid; gap: 14px; }
+.pfr-snapshot-state { min-height: 96px; color: var(--muted); display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 13px; }
+.pfr-snapshot .pfr-biometrics { margin: 0; }
+.pfr-snapshot .pfr-biometrics div { background: #fff; }
+.pfr-snapshot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.pfr-snapshot-grid > div { min-width: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.pfr-snapshot-grid h3 { margin: 0 0 8px; color: #8796a2; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.pfr-snapshot-grid ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.pfr-snapshot-grid li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pfr-snapshot-grid li > span:not(.pfr-source) { min-width: 0; display: grid; gap: 2px; }
+.pfr-snapshot-grid strong { font-size: 13px; }
+.pfr-snapshot-grid small { color: var(--muted); font-size: 12px; }
+.pfr-snapshot-grid p { margin: 0; color: var(--muted); display: grid; gap: 3px; font-size: 13px; }
+.pfr-snapshot-grid p strong { color: var(--ink); }
+.pfr-snapshot footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; }
+@media (max-width: 600px) {
+  .pfr-snapshot { padding: 12px; }
+  .pfr-snapshot-grid { grid-template-columns: 1fr; }
+}

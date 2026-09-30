@@ -12,7 +12,7 @@ import {
 import { Icon, type IconName } from "./icons";
 import { FinanceLabRequestsWorkspace, FinanceOverviewWorkspace, FinancePrescriptionsWorkspace, LabTechWorkspace, PharmacyWorkspace } from "./ancillary-workspaces";
 import { SupportWidget } from "./support-widget";
-import { PatientFullRecord } from "./patient-full-record";
+import { PatientFullRecord, PatientSnapshot } from "./patient-full-record";
 
 type NavItem = { label: string; icon: IconName };
 type QueueFilter = "active" | "waiting" | "vitals_done" | "with_doctor" | "completed" | "cancelled";
@@ -171,7 +171,8 @@ export function DashboardApp() {
       <header className="topbar role-topbar"><div><span className="topbar-role">{facility?.name || `${roleLabels[role]} workspace`}</span><strong>{session.user.name} · {roleLabels[role]}</strong></div><div className="top-actions"><span className="avatar avatar-small">{initials}</span></div></header>
       <div className="dashboard role-dashboard">
         {error && <div className="workspace-error" role="alert"><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
-        {recordPatientId && role === "doctor" ? <PatientFullRecord key={recordPatientId} patientId={recordPatientId} backLabel={`Back to ${active.toLowerCase()}`} onBack={() => setRecordPatientId(null)} /> : <>
+        {recordPatientId && role === "doctor" && <PatientFullRecord key={recordPatientId} patientId={recordPatientId} backLabel={`Back to ${active.toLowerCase()}`} onBack={() => setRecordPatientId(null)} />}
+        <div className="workspace-stack" hidden={!!recordPatientId && role === "doctor"}>
         {active === "Overview" && !isPharmacyRole(role) && !isLabRole(role) && !isFinanceRole(role) && <RoleOverview session={session} facility={facility} queue={queue} queueFilter={queueFilter} loading={queueLoading} onNavigate={navigate} onSelect={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} />}
         {(active === "Patient check-in" || active === "Patient search") && <PatientSearch role={role} facilityId={facilityId} onOpenRecord={setRecordPatientId} onCheckInRequested={(request) => { setCheckInRequests((current) => [request, ...current.filter((item) => item.id !== request.id)]); notify(`Check-in code sent to ${request.patient.name}`); setActive("Check-in requests"); }} onError={reportError} />}
         {active === "Register patient" && role === "reception" && <WalkInRegistration facilityId={facilityId} onCheckedIn={(visit) => { void refreshQueue(); notify(`${visit.patient.name} checked in`); }} onOpenQueue={(visit) => { setSelectedVisit(visit); setActive("Visit queue"); }} onError={reportError} />}
@@ -183,7 +184,7 @@ export function DashboardApp() {
         {isFinanceRole(role) && active === "Overview" && <FinanceOverviewWorkspace onError={reportError} />}
         {isFinanceRole(role) && active === "Prescriptions" && <FinancePrescriptionsWorkspace onError={reportError} notify={notify} />}
         {isFinanceRole(role) && active === "Lab requests" && <FinanceLabRequestsWorkspace onError={reportError} notify={notify} />}
-        </>}
+        </div>
       </div>
     </main>
     <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{mobileNavItems.map((item) => <button key={item.label} className={active === item.label ? "active" : ""} onClick={() => navigate(item.label)}><span><Icon name={item.icon} size={20} />{((item.label === "Visit queue" && queue.length > 0) || (item.label === "Check-in requests" && checkInRequests.length > 0)) && <i />}</span><small>{item.label.replace("Patient ", "")}</small></button>)}<button onClick={() => setMenuOpen(true)}><span><Icon name="more" size={20} /></span><small>More</small></button></nav>
@@ -431,6 +432,7 @@ function VisitDetail({ role, visit, onOpenRecord, onVisitChanged, onError, notif
   const [busy, setBusy] = useState(false);
   async function changeStatus(status: "cancelled" | "completed") { setBusy(true); try { onVisitChanged(await meditrustApi.updateVisitStatus(visit.id, status)); } catch (reason) { onError(reason); } finally { setBusy(false); } }
   return <><div className="visit-patient-head"><PatientAvatar patient={visit.patient} large /><div><span className={`record-status ${visit.status}`}>{titleCase(visit.status)}</span><h2>{visit.patient.name}</h2><p>{visit.patient.digital_health_id}</p></div>{role === "doctor" && <FullRecordButton onClick={() => onOpenRecord(visit.patient.id)} />}</div><dl className="patient-facts"><div><dt>Age / sex</dt><dd>{ageFromDob(visit.patient.dob)} · {visit.patient.sex}</dd></div><div><dt>Checked in</dt><dd>{formatDate(visit.checked_in_at)}</dd></div><div><dt>Phone</dt><dd>{visit.patient.phone || "Not provided"}</dd></div></dl>
+    {role === "doctor" && <PatientSnapshot patientId={visit.patient.id} onOpenRecord={() => onOpenRecord(visit.patient.id)} />}
     {role === "reception" && visit.status === "waiting" && <div className="visit-actions"><p>Front desk actions</p><button className="danger-outline" disabled={busy} onClick={() => void changeStatus("cancelled")}>Cancel visit</button></div>}
     {role === "nurse" && (visit.status === "waiting" ? <VitalsForm visit={visit} onRecorded={() => onVisitChanged({ ...visit, status: "vitals_done" })} onError={onError} notify={notify} /> : <div className="historical-visit-note"><Icon name="check" /><strong>{titleCase(visit.status)} visit</strong><span>Vitals can be recorded from the waiting queue.</span></div>)}
     {role === "doctor" && (visit.status === "completed" || visit.status === "cancelled" ? <div className="historical-visit-note"><Icon name={visit.status === "completed" ? "check" : "x"} /><strong>{titleCase(visit.status)} visit</strong><span>This visit is read-only and no longer accepts clinical actions.</span></div> : <DoctorWorkspace visit={visit} onStarted={() => onVisitChanged({ ...visit, status: "with_doctor" })} onFinalized={() => onVisitChanged({ ...visit, status: "completed" })} onError={onError} notify={notify} />)}
