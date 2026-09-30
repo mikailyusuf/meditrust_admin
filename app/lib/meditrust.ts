@@ -295,6 +295,68 @@ export type TimelineItem = {
   data: Prescription | Encounter | Vitals | Record<string, unknown>;
 };
 
+export type RecordSource = "clinician_verified" | "patient_reported" | string;
+
+export type AllergyRecord = { id: string; allergen: string; severity: "mild" | "moderate" | "severe" | string | null; reaction?: string | null; source: RecordSource };
+
+export type ConditionRecord = { id: string; name: string; status: "active" | "resolved" | string; diagnosed_on?: string | null; notes?: string | null; source: RecordSource };
+
+export type ReportedMedication = { id: string; name: string; dosage: string | null; frequency: string | null; route: string | null; is_current: boolean; started_on: string | null; stopped_on: string | null; source: RecordSource };
+
+export type MedicalHistoryEntry = { id: string; type: "surgery" | "hospitalization" | "immunization" | string; title: string; occurred_on: string | null; facility_name: string | null; notes?: string | null; source: RecordSource };
+
+export type CurrentMedication = { source_kind: "prescription" | "reported" | string; id: string; name: string; dosage: string | null; frequency: string | null; duration_days?: number | null; issued_at?: string | null; facility?: string | null; source: RecordSource };
+
+export type PatientProfile = AppointmentPatient & {
+  genotype: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  bmi: number | null;
+  allergies: string[];
+  allergy_records: AllergyRecord[];
+  address: string | null;
+  profile_completed_at: string | null;
+};
+
+export type ClinicalSnapshot = {
+  patient: Pick<PatientSummary, "id" | "digital_health_id" | "name" | "dob" | "sex"> & { age: number };
+  blood_group: string | null;
+  genotype: string | null;
+  allergies: AllergyRecord[];
+  chronic_conditions: ConditionRecord[];
+  current_medications: CurrentMedication[];
+  vitals: { recorded_at: string; blood_pressure: string | null; temperature: number | null; pulse: number | null; respiratory_rate: number | null; spo2: number | null; weight_kg: number | null; height_cm: number | null; bmi: number | null } | null;
+  primary_facility: { id: string; name: string; last_encounter_at: string | null } | null;
+  last_encounter_at: string | null;
+};
+
+type NamedRef = { id: string; name: string };
+
+export type RecordEncounter = Encounter & { doctor?: NamedRef; facility?: NamedRef };
+
+export type RecordAppointment = Omit<Appointment, "patient" | "facility"> & {
+  doctor?: Pick<AuthUser, "id" | "name" | "email" | "phone"> & { specialty?: string | null };
+  facility?: Pick<Facility, "id" | "type" | "name">;
+};
+
+export type Referral = { id: string; patient_id: string; from_facility_id: string; to_facility_id: string; from_user_id: string; reason: string | null; status: string; created_at: string; to_facility?: NamedRef; from_facility?: NamedRef };
+
+export type PatientFullRecord = {
+  patient: PatientProfile;
+  guardian: Pick<PatientSummary, "id" | "digital_health_id" | "name" | "phone"> | null;
+  snapshot: ClinicalSnapshot;
+  health_profile: { allergies: AllergyRecord[]; conditions: ConditionRecord[]; medications: ReportedMedication[]; medical_history: MedicalHistoryEntry[] };
+  visits: (Omit<Visit, "patient" | "facility_id" | "checked_in_by"> & { facility?: NamedRef })[];
+  vitals: Vitals[];
+  encounters: RecordEncounter[];
+  prescriptions: FacilityPrescription[];
+  lab_requests: LabRequest[];
+  referrals: Referral[];
+  appointments: RecordAppointment[];
+  counts: Record<"visits" | "encounters" | "prescriptions" | "lab_requests" | "referrals" | "appointments", number>;
+  limit: number;
+};
+
 type Envelope<T> = { success: boolean; message: string; data: T };
 
 export class ApiError extends Error {
@@ -360,6 +422,7 @@ export const meditrustApi = {
   updateVisitStatus: (visitId: string, status: "completed" | "cancelled") => api<Visit>(`/v1/visits/${encodeURIComponent(visitId)}/status`, json("PATCH", { status })),
   recordVitals: (visitId: string, values: Partial<Omit<Vitals, "id" | "visit_id" | "patient_id" | "recorded_by" | "recorded_at">>) => api<Vitals>(`/v1/visits/${encodeURIComponent(visitId)}/vitals`, json("POST", values)),
   getVitals: (patientId: string) => api<Vitals[]>(`/v1/patients/${encodeURIComponent(patientId)}/vitals`),
+  getPatientFullRecord: (patientId: string, limit = 20) => api<PatientFullRecord>(`/v1/patients/${encodeURIComponent(patientId)}/full-record?limit=${limit}`),
   getTimeline: (patientId: string) => api<TimelineItem[]>(`/v1/patients/${encodeURIComponent(patientId)}/timeline`),
   getDoctorAppointments: () => api<Appointment[]>("/v1/doctor/appointments"),
   getAiDiagnosisSuggestion: (patientId: string, symptoms: string) => api<AiDiagnosisSuggestion>(`/v1/patients/${encodeURIComponent(patientId)}/ai-diagnosis-suggestion`, json("POST", { symptoms })),
