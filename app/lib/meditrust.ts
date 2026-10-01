@@ -96,6 +96,7 @@ export type Prescription = {
   id: string;
   encounter_id: string;
   patient_id: string;
+  patient?: Pick<PatientSummary, "id" | "digital_health_id" | "name" | "dob" | "sex">;
   doctor_id: string;
   medication_name: string;
   dosage: string;
@@ -140,6 +141,7 @@ export type LabRequest = {
   id: string;
   encounter_id: string;
   patient_id: string;
+  patient?: Pick<PatientSummary, "id" | "digital_health_id" | "name" | "dob" | "sex">;
   ordered_by: string;
   facility_id: string;
   forwarded_to_facility_id: string | null;
@@ -234,6 +236,25 @@ export type LabResultPayload = {
   result_text: string;
   values: Record<string, string>;
   file_urls: string[];
+};
+
+export type LabRequestFilters = {
+  status?: string;
+  paymentStatus?: PaymentStatus;
+  search?: string;
+  orderedFrom?: string;
+  orderedTo?: string;
+  perPage?: number;
+};
+
+export type PrescriptionFilters = {
+  status?: "active" | "completed" | "cancelled";
+  forwardStatus?: "pending" | "received" | "dispensed";
+  paymentStatus?: PaymentStatus;
+  search?: string;
+  issuedFrom?: string;
+  issuedTo?: string;
+  perPage?: number;
 };
 
 export type AiDifferentialDiagnosis = {
@@ -398,6 +419,17 @@ function json(method: "POST" | "PATCH", body?: unknown): RequestInit {
   return { method, body: body === undefined ? undefined : JSON.stringify(body) };
 }
 
+function prescriptionFiltersQuery(page: number, filters: PrescriptionFilters) {
+  const query = new URLSearchParams({ page: String(page), per_page: String(filters.perPage || 20) });
+  if (filters.status) query.set("status", filters.status);
+  if (filters.forwardStatus) query.set("forward_status", filters.forwardStatus);
+  if (filters.paymentStatus) query.set("payment_status", filters.paymentStatus);
+  if (filters.search?.trim()) query.set("search", filters.search.trim());
+  if (filters.issuedFrom) query.set("issued_from", filters.issuedFrom);
+  if (filters.issuedTo) query.set("issued_to", filters.issuedTo);
+  return query;
+}
+
 export const meditrustApi = {
   listSupportTickets: (search = "", page = 1) => {
     const query = new URLSearchParams({ per_page: "20", page: String(page) });
@@ -449,7 +481,15 @@ export const meditrustApi = {
   },
   createLabRequest: (encounterId: string, testName: string, notes: string) => api<LabRequest>(`/v1/encounters/${encodeURIComponent(encounterId)}/lab-requests`, json("POST", { test_name: testName, notes })),
   forwardLabRequest: (labRequestId: string, labFacilityId: string) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/forward`, json("POST", { lab_facility_id: labFacilityId })),
-  listFacilityLabRequests: (facilityId: string, page: number, perPage = 20) => api<Paginated<LabRequest>>(`/v1/facilities/${encodeURIComponent(facilityId)}/lab-requests?page=${page}&per_page=${perPage}`),
+  listFacilityLabRequests: (_facilityId: string, page: number, filters: LabRequestFilters = {}) => {
+    const query = new URLSearchParams({ page: String(page), per_page: String(filters.perPage || 20) });
+    if (filters.status) query.set("status", filters.status);
+    if (filters.paymentStatus) query.set("payment_status", filters.paymentStatus);
+    if (filters.search?.trim()) query.set("search", filters.search.trim());
+    if (filters.orderedFrom) query.set("ordered_from", filters.orderedFrom);
+    if (filters.orderedTo) query.set("ordered_to", filters.orderedTo);
+    return api<Paginated<LabRequest>>(`/v1/facility/lab-requests?${query}`);
+  },
   setLabRequestPayment: (labRequestId: string, payload: PaymentUpdate) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/payment`, json("PATCH", payload)),
   submitLabResult: (labRequestId: string, payload: LabResultPayload) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/result`, json("POST", payload)),
   uploadFile: (file: File, folder = "lab-results") => {
@@ -458,10 +498,13 @@ export const meditrustApi = {
     body.append("folder", folder);
     return api<UploadedFile>("/v1/uploads", { method: "POST", body });
   },
-  listFacilityPrescriptions: (facilityId: string, page: number, perPage = 20) => api<Paginated<FacilityPrescription>>(`/v1/facilities/${encodeURIComponent(facilityId)}/prescriptions?page=${page}&per_page=${perPage}`),
+  listFacilityPrescriptions: (facilityId: string, page: number, filters: PrescriptionFilters = {}) => {
+    const query = prescriptionFiltersQuery(page, filters);
+    return api<Paginated<FacilityPrescription>>(`/v1/facilities/${encodeURIComponent(facilityId)}/prescriptions?${query}`);
+  },
   dispensePrescription: (prescriptionId: string) => api<FacilityPrescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/dispense`, json("PATCH")),
   directory: (type: "pharmacy" | "lab") => api<Facility[]>(`/v1/facilities/directory?type=${type}`),
-  listFinancePrescriptions: (page: number, perPage = 20) => api<Paginated<FacilityPrescription>>(`/v1/facility/prescriptions?page=${page}&per_page=${perPage}`),
+  listFinancePrescriptions: (page: number, filters: PrescriptionFilters = {}) => api<Paginated<FacilityPrescription>>(`/v1/facility/prescriptions?${prescriptionFiltersQuery(page, filters)}`),
   listFinanceLabRequests: (page: number, perPage = 20) => api<Paginated<LabRequest>>(`/v1/facility/lab-requests?page=${page}&per_page=${perPage}`),
   getFinanceStats: (filters: { from?: string; to?: string; paymentStatus?: PaymentStatus }) => {
     const query = new URLSearchParams();

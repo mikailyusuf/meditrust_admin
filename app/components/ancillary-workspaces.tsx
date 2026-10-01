@@ -8,6 +8,7 @@ import {
   type FacilityPrescription,
   type FinanceStats,
   type FinanceStatsSection,
+  type LabRequestFilters,
   type LabRequest,
   type PaginationMeta,
   type PaymentStatus,
@@ -30,6 +31,14 @@ function formatAmount(amount: string | null) {
   return Number.isNaN(value) ? amount : `₦${value.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function patientInitials(name?: string) {
+  return name?.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "—";
+}
+
+function titleCase(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 type ResultValue = { id: number; key: string; value: string };
 
 export function LabTechWorkspace({ facilityId, role, onError, notify }: WorkspaceProps) {
@@ -37,6 +46,8 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
   const [requests, setRequests] = useState<LabRequest[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
+  const [filterDraft, setFilterDraft] = useState<LabRequestFilters>({ perPage: 20 });
+  const [filters, setFilters] = useState<LabRequestFilters>({ perPage: 20 });
   const [selected, setSelected] = useState<LabRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -52,13 +63,13 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
     setResubmitAllowedFor(null);
     setConfirmingResubmit(false);
     try {
-      const result = await meditrustApi.listFacilityLabRequests(facilityId, page);
+      const result = await meditrustApi.listFacilityLabRequests(facilityId, page, filters);
       setRequests(result.data);
       setMeta(result.meta);
       setSelected((current) => current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null);
     } catch (reason) { onError(reason); }
     finally { setLoading(false); }
-  }, [facilityId, onError, page]);
+  }, [facilityId, filters, onError, page]);
 
   useEffect(() => { void Promise.resolve().then(loadRequests); }, [loadRequests]);
 
@@ -73,6 +84,19 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
   function addValue() {
     setValues((current) => [...current, { id: nextValueId, key: "", value: "" }]);
     setNextValueId((value) => value + 1);
+  }
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPage(1);
+    setFilters({ ...filterDraft, search: filterDraft.search?.trim() || undefined });
+  }
+
+  function clearFilters() {
+    const cleared = { perPage: 20 };
+    setFilterDraft(cleared);
+    setFilters(cleared);
+    setPage(1);
   }
 
   async function submitResult(event: FormEvent<HTMLFormElement>) {
@@ -110,14 +134,24 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
 
   return <section className="ancillary-workspace">
     <WorkspaceIntro eyebrow="Diagnostics operations" title="Laboratory requests" description="Review referred investigations, record structured values, and attach completed reports." count={meta?.total} loading={loading} onRefresh={() => void loadRequests()} />
+    <form className="lab-request-filters" onSubmit={applyFilters}>
+      <label className="lab-filter-search"><span>Find a request</span><div><Icon name="search" size={16} /><input type="search" value={filterDraft.search || ""} onChange={(event) => setFilterDraft((current) => ({ ...current, search: event.target.value }))} placeholder="Patient, Health ID or test" aria-label="Search laboratory requests" /></div></label>
+      <label><span>Request status</span><select value={filterDraft.status || ""} onChange={(event) => setFilterDraft((current) => ({ ...current, status: event.target.value || undefined }))}><option value="">All statuses</option><option value="forwarded">Forwarded</option><option value="pending">Pending</option><option value="resulted">Resulted</option><option value="completed">Completed</option></select></label>
+      <label><span>Payment</span><select value={filterDraft.paymentStatus || ""} onChange={(event) => setFilterDraft((current) => ({ ...current, paymentStatus: event.target.value as PaymentStatus || undefined }))}><option value="">All payments</option><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="waived">Waived</option></select></label>
+      <label><span>Ordered from</span><input type="date" value={filterDraft.orderedFrom || ""} onChange={(event) => setFilterDraft((current) => ({ ...current, orderedFrom: event.target.value || undefined }))} /></label>
+      <label><span>Ordered to</span><input type="date" value={filterDraft.orderedTo || ""} onChange={(event) => setFilterDraft((current) => ({ ...current, orderedTo: event.target.value || undefined }))} /></label>
+      <label><span>Show</span><select value={filterDraft.perPage || 20} onChange={(event) => setFilterDraft((current) => ({ ...current, perPage: Number(event.target.value) }))}><option value="10">10 per page</option><option value="20">20 per page</option><option value="50">50 per page</option></select></label>
+      <div className="lab-filter-actions"><button type="button" onClick={clearFilters} disabled={loading}>Clear</button><button type="submit" disabled={loading}>Apply filters</button></div>
+    </form>
     <div className="ancillary-layout">
       <section className="ancillary-list-panel">
         <div className="ancillary-list-heading"><div><strong>Incoming requests</strong><span>{meta ? `${meta.from || 0}–${meta.to || 0} of ${meta.total}` : "Current facility"}</span></div><span className="live-indicator"><i />Live</span></div>
-        <div className="ancillary-list">{loading ? <AncillaryLoading /> : requests.length ? requests.map((request) => <button key={request.id} className={selected?.id === request.id ? "selected" : ""} onClick={() => { setSelected(request); setFormError(""); setResubmitAllowedFor(null); setConfirmingResubmit(false); }}><span className="ancillary-row-icon"><Icon name="hospital" /></span><span><strong>{request.test_name}</strong><small>{request.facility?.name || "Referring facility"} · {request.doctor?.name || "Ordering doctor"}</small><em>{formatDate(request.ordered_at)}</em></span><Status value={request.status} /></button>) : <AncillaryEmpty title="No laboratory requests" body="New referred tests will appear here." />}</div>
+        <div className="ancillary-list">{loading ? <AncillaryLoading /> : requests.length ? requests.map((request) => <button key={request.id} className={selected?.id === request.id ? "selected" : ""} onClick={() => { setSelected(request); setFormError(""); setResubmitAllowedFor(null); setConfirmingResubmit(false); }}><span className="ancillary-row-icon"><Icon name="hospital" /></span><span><strong>{request.test_name}</strong><small>{request.patient?.name || "Patient details unavailable"}{request.patient?.digital_health_id ? ` · ${request.patient.digital_health_id}` : ""}</small><em>{request.facility?.name || "Referring facility"} · {formatDate(request.ordered_at)}</em></span><Status value={request.status} /></button>) : <AncillaryEmpty title="No laboratory requests" body="Try adjusting the filters or check again later." />}</div>
         <Pagination meta={meta} page={page} loading={loading} onPage={setPage} />
       </section>
       <section className="ancillary-detail-panel">{selected ? <>
         <header className="ancillary-detail-heading"><span><Icon name="hospital" size={21} /></span><div><small>Laboratory request</small><h2>{selected.test_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.status} /></header>
+        <section className="lab-patient-card" aria-label="Patient information"><span className="lab-patient-avatar">{patientInitials(selected.patient?.name)}</span><div><small>Patient</small><strong>{selected.patient?.name || "Patient details unavailable"}</strong><span>{selected.patient?.digital_health_id || "No Digital Health ID"}</span></div><dl><div><dt>Date of birth</dt><dd>{selected.patient?.dob ? formatDate(selected.patient.dob) : "Not provided"}</dd></div><div><dt>Sex</dt><dd>{selected.patient?.sex ? titleCase(selected.patient.sex) : "Not provided"}</dd></div></dl></section>
         <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
         <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.status === "resulted"} kind="test" onSubmit={setPayment} />
         {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
