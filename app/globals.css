@@ -827,15 +827,16 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .ancillary-header > div:last-child > span { min-width: 90px; display: grid; gap: 2px; text-align: right; }
 .ancillary-header > div:last-child strong { color: var(--navy); font-size: 20px; }
 .ancillary-header > div:last-child small { color: var(--muted); font-size: 7px; }
-.lab-request-filters { padding: 15px 17px; border: 1px solid var(--border); border-radius: 16px; background: #fff; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(190px, 1.65fr) repeat(4, minmax(115px, 1fr)) minmax(90px, .72fr) auto; align-items: end; gap: 10px; }
+.lab-request-filters { padding: 15px 17px; border: 1px solid var(--border); border-radius: 16px; background: #fff; box-shadow: var(--shadow); display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); align-items: end; gap: 10px; }
 .lab-request-filters label { display: grid; gap: 6px; min-width: 0; color: #425767; font-size: 8px; font-weight: 750; }
 .lab-request-filters label > span { white-space: nowrap; }
 .lab-request-filters input, .lab-request-filters select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--ink); outline: 0; font: inherit; font-size: 9px; }
 .lab-request-filters input:focus, .lab-request-filters select:focus { border-color: #83c0d7; box-shadow: 0 0 0 3px rgba(8,126,174,.07); }
+.lab-filter-search { grid-column: span 2; }
 .lab-filter-search > div { position: relative; }
 .lab-filter-search svg { position: absolute; top: 12px; left: 11px; color: #78909d; pointer-events: none; }
 .lab-filter-search input { padding-left: 35px; }
-.lab-filter-actions { display: flex; gap: 7px; }
+.lab-filter-actions { grid-column: span 2; display: flex; gap: 7px; }
 .lab-filter-actions button { min-height: 40px; padding: 0 11px; border: 1px solid #bddce7; border-radius: 9px; background: var(--blue-soft); color: var(--blue); white-space: nowrap; font-size: 8px; font-weight: 800; }
 .lab-filter-actions button:first-child { border-color: var(--border); background: #fff; color: #627785; }
 .lab-filter-actions button:disabled { cursor: not-allowed; opacity: .55; }

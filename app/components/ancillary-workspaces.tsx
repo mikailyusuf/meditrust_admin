@@ -12,6 +12,8 @@ import {
   type LabRequest,
   type PaginationMeta,
   type PaymentStatus,
+  type PatientSummary,
+  type PrescriptionFilters,
   type StaffRole,
 } from "../lib/meditrust";
 import { Icon, type IconName } from "./icons";
@@ -151,7 +153,7 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
       </section>
       <section className="ancillary-detail-panel">{selected ? <>
         <header className="ancillary-detail-heading"><span><Icon name="hospital" size={21} /></span><div><small>Laboratory request</small><h2>{selected.test_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.status} /></header>
-        <section className="lab-patient-card" aria-label="Patient information"><span className="lab-patient-avatar">{patientInitials(selected.patient?.name)}</span><div><small>Patient</small><strong>{selected.patient?.name || "Patient details unavailable"}</strong><span>{selected.patient?.digital_health_id || "No Digital Health ID"}</span></div><dl><div><dt>Date of birth</dt><dd>{selected.patient?.dob ? formatDate(selected.patient.dob) : "Not provided"}</dd></div><div><dt>Sex</dt><dd>{selected.patient?.sex ? titleCase(selected.patient.sex) : "Not provided"}</dd></div></dl></section>
+        <PatientSummaryCard patient={selected.patient} />
         <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
         <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.status === "resulted"} kind="test" onSubmit={setPayment} />
         {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
@@ -175,6 +177,8 @@ export function PharmacyWorkspace({ facilityId, role, onError, notify }: Workspa
   const [prescriptions, setPrescriptions] = useState<FacilityPrescription[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
+  const [filterDraft, setFilterDraft] = useState<PrescriptionFilters>({ perPage: 20 });
+  const [filters, setFilters] = useState<PrescriptionFilters>({ perPage: 20 });
   const [selected, setSelected] = useState<FacilityPrescription | null>(null);
   const [loading, setLoading] = useState(true);
   const [dispensing, setDispensing] = useState(false);
@@ -182,13 +186,13 @@ export function PharmacyWorkspace({ facilityId, role, onError, notify }: Workspa
   const loadPrescriptions = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await meditrustApi.listFacilityPrescriptions(facilityId, page);
+      const result = await meditrustApi.listFacilityPrescriptions(facilityId, page, filters);
       setPrescriptions(result.data);
       setMeta(result.meta);
       setSelected((current) => current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null);
     } catch (reason) { onError(reason); }
     finally { setLoading(false); }
-  }, [facilityId, onError, page]);
+  }, [facilityId, filters, onError, page]);
 
   useEffect(() => { void Promise.resolve().then(loadPrescriptions); }, [loadPrescriptions]);
 
@@ -215,14 +219,19 @@ export function PharmacyWorkspace({ facilityId, role, onError, notify }: Workspa
     notify("Payment updated");
   }
 
+  function applyFilters() { setPage(1); setFilters({ ...filterDraft, search: filterDraft.search?.trim() || undefined }); }
+  function clearFilters() { const cleared = { perPage: 20 }; setFilterDraft(cleared); setFilters(cleared); setPage(1); }
+
   return <section className="ancillary-workspace pharmacy-workspace">
     <WorkspaceIntro eyebrow="Medication operations" title="Prescription inbox" description="Review prescriptions referred to this pharmacy and confirm dispensing." count={meta?.total} loading={loading} onRefresh={() => void loadPrescriptions()} />
+    <PrescriptionFiltersForm draft={filterDraft} onChange={setFilterDraft} onApply={applyFilters} onClear={clearFilters} loading={loading} />
     <div className="ancillary-layout">
       <section className="ancillary-list-panel"><div className="ancillary-list-heading"><div><strong>Incoming prescriptions</strong><span>{meta ? `${meta.from || 0}–${meta.to || 0} of ${meta.total}` : "Current facility"}</span></div><span className="live-indicator"><i />Live</span></div>
-        <div className="ancillary-list">{loading ? <AncillaryLoading /> : prescriptions.length ? prescriptions.map((prescription) => <button key={prescription.id} className={selected?.id === prescription.id ? "selected" : ""} onClick={() => setSelected(prescription)}><span className="ancillary-row-icon pharmacy"><Icon name="file" /></span><span><strong>{prescription.medication_name}</strong><small>{prescription.dosage} · {prescription.frequency} · {prescription.duration_days} days</small><em>{prescription.facility?.name || prescription.doctor?.name || "Referring facility"}</em></span><Status value={prescription.forward_status || prescription.status} /></button>) : <AncillaryEmpty title="No prescriptions" body="Referred prescriptions will appear here." />}</div>
+        <div className="ancillary-list">{loading ? <AncillaryLoading /> : prescriptions.length ? prescriptions.map((prescription) => <button key={prescription.id} className={selected?.id === prescription.id ? "selected" : ""} onClick={() => setSelected(prescription)}><span className="ancillary-row-icon pharmacy"><Icon name="file" /></span><span><strong>{prescription.medication_name}</strong><small>{prescription.patient?.name || "Patient details unavailable"}{prescription.patient?.digital_health_id ? ` · ${prescription.patient.digital_health_id}` : ""}</small><em>{prescription.dosage} · {prescription.frequency} · {prescription.duration_days} days</em></span><Status value={prescription.forward_status || prescription.status} /></button>) : <AncillaryEmpty title="No prescriptions" body="Try adjusting the filters or check again later." />}</div>
         <Pagination meta={meta} page={page} loading={loading} onPage={setPage} />
       </section>
       <section className="ancillary-detail-panel">{selected ? <><header className="ancillary-detail-heading"><span className="pharmacy"><Icon name="file" size={21} /></span><div><small>Prescription</small><h2>{selected.medication_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.forward_status || selected.status} /></header>
+        <PatientSummaryCard patient={selected.patient} />
         <dl className="ancillary-facts prescription-facts"><div><dt>Dosage</dt><dd>{selected.dosage}</dd></div><div><dt>Frequency</dt><dd>{selected.frequency}</dd></div><div><dt>Duration</dt><dd>{selected.duration_days} days</dd></div><div><dt>Prescribing doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div className="wide"><dt>Instructions</dt><dd>{selected.instructions || "No special instructions"}</dd></div><div><dt>Issued</dt><dd>{formatDate(selected.issued_at)}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
         <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.forward_status === "dispensed"} kind="drug" onSubmit={setPayment} />
         <div className="dispense-panel"><span><Icon name="check" /></span><div><strong>{selected.forward_status === "dispensed" ? "Dispensing complete" : selected.payment_status === "unpaid" ? "Payment outstanding" : "Ready to dispense"}</strong><p>{selected.forward_status === "dispensed" ? "This prescription has been marked as dispensed." : selected.payment_status === "unpaid" ? "Settle or waive the payment above before dispensing." : "Confirm only after the medication has been prepared and handed to the patient."}</p></div><button disabled={dispensing || selected.forward_status === "dispensed" || selected.payment_status === "unpaid"} onClick={() => void dispense()}>{dispensing ? "Updating…" : selected.forward_status === "dispensed" ? "Dispensed" : "Mark as dispensed"}</button></div>
@@ -289,19 +298,21 @@ export function FinancePrescriptionsWorkspace({ onError, notify }: { onError: (r
   const [prescriptions, setPrescriptions] = useState<FacilityPrescription[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
+  const [filterDraft, setFilterDraft] = useState<PrescriptionFilters>({ perPage: 20 });
+  const [filters, setFilters] = useState<PrescriptionFilters>({ perPage: 20 });
   const [selected, setSelected] = useState<FacilityPrescription | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadPrescriptions = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await meditrustApi.listFinancePrescriptions(page);
+      const result = await meditrustApi.listFinancePrescriptions(page, filters);
       setPrescriptions(result.data);
       setMeta(result.meta);
       setSelected((current) => current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null);
     } catch (reason) { onError(reason); }
     finally { setLoading(false); }
-  }, [onError, page]);
+  }, [filters, onError, page]);
 
   useEffect(() => { void Promise.resolve().then(loadPrescriptions); }, [loadPrescriptions]);
 
@@ -313,14 +324,19 @@ export function FinancePrescriptionsWorkspace({ onError, notify }: { onError: (r
     notify("Payment updated");
   }
 
+  function applyFilters() { setPage(1); setFilters({ ...filterDraft, search: filterDraft.search?.trim() || undefined }); }
+  function clearFilters() { const cleared = { perPage: 20 }; setFilterDraft(cleared); setFilters(cleared); setPage(1); }
+
   return <section className="ancillary-workspace pharmacy-workspace">
     <WorkspaceIntro eyebrow="Finance operations" title="Prescription billing" description="Set the price and record payment for prescriptions forwarded to your facility." count={meta?.total} loading={loading} onRefresh={() => void loadPrescriptions()} />
+    <PrescriptionFiltersForm draft={filterDraft} onChange={setFilterDraft} onApply={applyFilters} onClear={clearFilters} loading={loading} />
     <div className="ancillary-layout">
       <section className="ancillary-list-panel"><div className="ancillary-list-heading"><div><strong>Prescriptions</strong><span>{meta ? `${meta.from || 0}–${meta.to || 0} of ${meta.total}` : "Current facility"}</span></div><span className="live-indicator"><i />Live</span></div>
-        <div className="ancillary-list">{loading ? <AncillaryLoading /> : prescriptions.length ? prescriptions.map((prescription) => <button key={prescription.id} className={selected?.id === prescription.id ? "selected" : ""} onClick={() => setSelected(prescription)}><span className="ancillary-row-icon pharmacy"><Icon name="file" /></span><span><strong>{prescription.medication_name}</strong><small>{prescription.dosage} · {prescription.frequency} · {prescription.duration_days} days</small><em>{prescription.doctor?.name || "Prescribing doctor"}</em></span><Status value={prescription.payment_status} /></button>) : <AncillaryEmpty title="No prescriptions" body="Prescriptions forwarded to your facility will appear here." />}</div>
+        <div className="ancillary-list">{loading ? <AncillaryLoading /> : prescriptions.length ? prescriptions.map((prescription) => <button key={prescription.id} className={selected?.id === prescription.id ? "selected" : ""} onClick={() => setSelected(prescription)}><span className="ancillary-row-icon pharmacy"><Icon name="file" /></span><span><strong>{prescription.medication_name}</strong><small>{prescription.patient?.name || "Patient details unavailable"}{prescription.patient?.digital_health_id ? ` · ${prescription.patient.digital_health_id}` : ""}</small><em>{prescription.dosage} · {prescription.frequency} · {prescription.duration_days} days</em></span><Status value={prescription.payment_status} /></button>) : <AncillaryEmpty title="No prescriptions" body="Try adjusting the filters or check again later." />}</div>
         <Pagination meta={meta} page={page} loading={loading} onPage={setPage} />
       </section>
       <section className="ancillary-detail-panel">{selected ? <><header className="ancillary-detail-heading"><span className="pharmacy"><Icon name="file" size={21} /></span><div><small>Prescription</small><h2>{selected.medication_name}</h2><p>{selected.facility?.name || "Referring facility"}</p></div><Status value={selected.forward_status || selected.status} /></header>
+        <PatientSummaryCard patient={selected.patient} />
         <dl className="ancillary-facts prescription-facts"><div><dt>Dosage</dt><dd>{selected.dosage}</dd></div><div><dt>Frequency</dt><dd>{selected.frequency}</dd></div><div><dt>Duration</dt><dd>{selected.duration_days} days</dd></div><div><dt>Prescribing doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div className="wide"><dt>Instructions</dt><dd>{selected.instructions || "No special instructions"}</dd></div><div><dt>Issued</dt><dd>{formatDate(selected.issued_at)}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
         <PaymentPanel key={selected.id} record={selected} canBill locked={selected.forward_status === "dispensed"} kind="drug" onSubmit={setPayment} />
       </> : <AncillaryEmpty title="Select a prescription" body="Billing details will appear here." />}</section>
@@ -371,6 +387,25 @@ export function FinanceLabRequestsWorkspace({ onError, notify }: { onError: (rea
       </> : <AncillaryEmpty title="Select a request" body="Billing details will appear here." />}</section>
     </div>
   </section>;
+}
+
+type PatientDetails = Pick<PatientSummary, "name" | "digital_health_id" | "dob" | "sex">;
+
+function PatientSummaryCard({ patient }: { patient?: PatientDetails }) {
+  return <section className="lab-patient-card" aria-label="Patient information"><span className="lab-patient-avatar">{patientInitials(patient?.name)}</span><div><small>Patient</small><strong>{patient?.name || "Patient details unavailable"}</strong><span>{patient?.digital_health_id || "No Digital Health ID"}</span></div><dl><div><dt>Date of birth</dt><dd>{patient?.dob ? formatDate(patient.dob) : "Not provided"}</dd></div><div><dt>Sex</dt><dd>{patient?.sex ? titleCase(patient.sex) : "Not provided"}</dd></div></dl></section>;
+}
+
+function PrescriptionFiltersForm({ draft, onChange, onApply, onClear, loading }: { draft: PrescriptionFilters; onChange: (value: PrescriptionFilters) => void; onApply: () => void; onClear: () => void; loading: boolean }) {
+  return <form className="lab-request-filters" onSubmit={(event) => { event.preventDefault(); onApply(); }}>
+    <label className="lab-filter-search"><span>Find a prescription</span><div><Icon name="search" size={16} /><input type="search" value={draft.search || ""} onChange={(event) => onChange({ ...draft, search: event.target.value })} placeholder="Patient, Health ID or medication" aria-label="Search prescriptions" /></div></label>
+    <label><span>Prescription status</span><select value={draft.status || ""} onChange={(event) => onChange({ ...draft, status: event.target.value as PrescriptionFilters["status"] || undefined })}><option value="">All statuses</option><option value="active">Active</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
+    <label><span>Forwarding</span><select value={draft.forwardStatus || ""} onChange={(event) => onChange({ ...draft, forwardStatus: event.target.value as PrescriptionFilters["forwardStatus"] || undefined })}><option value="">All states</option><option value="pending">Pending</option><option value="received">Received</option><option value="dispensed">Dispensed</option></select></label>
+    <label><span>Payment</span><select value={draft.paymentStatus || ""} onChange={(event) => onChange({ ...draft, paymentStatus: event.target.value as PaymentStatus || undefined })}><option value="">All payments</option><option value="unpaid">Unpaid</option><option value="paid">Paid</option><option value="waived">Waived</option></select></label>
+    <label><span>Issued from</span><input type="date" value={draft.issuedFrom || ""} onChange={(event) => onChange({ ...draft, issuedFrom: event.target.value || undefined })} /></label>
+    <label><span>Issued to</span><input type="date" value={draft.issuedTo || ""} onChange={(event) => onChange({ ...draft, issuedTo: event.target.value || undefined })} /></label>
+    <label><span>Show</span><select value={draft.perPage || 20} onChange={(event) => onChange({ ...draft, perPage: Number(event.target.value) })}><option value="10">10 per page</option><option value="20">20 per page</option><option value="50">50 per page</option></select></label>
+    <div className="lab-filter-actions"><button type="button" onClick={onClear} disabled={loading}>Clear</button><button type="submit" disabled={loading}>Apply filters</button></div>
+  </form>;
 }
 
 type PaymentRecord = { id: string; amount: string | null; payment_status: PaymentStatus; paid_at: string | null };
