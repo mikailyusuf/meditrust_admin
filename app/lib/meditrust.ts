@@ -156,6 +156,16 @@ export type LabRequest = {
   forwarded_to_facility?: Pick<Facility, "id" | "type" | "name" | "address" | "phone">;
 };
 
+export type LabCatalogItem = {
+  id: string;
+  code: string;
+  type: "lab" | string;
+  name: string;
+  category: string | null;
+  specimen: string | null;
+  aliases: string[];
+};
+
 export type PaginationMeta = {
   current_page: number;
   from: number | null;
@@ -433,6 +443,10 @@ export const meditrustApi = {
   createPrescription: (encounterId: string, values: Omit<Prescription, "id" | "encounter_id" | "patient_id" | "doctor_id" | "status" | "issued_at" | "forwarded_to_facility_id" | "forward_status" | "amount" | "payment_status" | "paid_at">) => api<Prescription>(`/v1/encounters/${encodeURIComponent(encounterId)}/prescriptions`, json("POST", values)),
   forwardPrescription: (prescriptionId: string, pharmacyFacilityId: string) => api<Prescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/forward`, json("POST", { pharmacy_facility_id: pharmacyFacilityId })),
   setPrescriptionPayment: (prescriptionId: string, payload: PaymentUpdate) => api<FacilityPrescription>(`/v1/prescriptions/${encodeURIComponent(prescriptionId)}/payment`, json("PATCH", payload)),
+  searchLabCatalog: async (query: string) => {
+    const result = await api<{ items: LabCatalogItem[] }>(`/v1/catalog/labs?query=${encodeURIComponent(query)}`);
+    return result.items;
+  },
   createLabRequest: (encounterId: string, testName: string, notes: string) => api<LabRequest>(`/v1/encounters/${encodeURIComponent(encounterId)}/lab-requests`, json("POST", { test_name: testName, notes })),
   forwardLabRequest: (labRequestId: string, labFacilityId: string) => api<LabRequest>(`/v1/lab-requests/${encodeURIComponent(labRequestId)}/forward`, json("POST", { lab_facility_id: labFacilityId })),
   listFacilityLabRequests: (facilityId: string, page: number, perPage = 20) => api<Paginated<LabRequest>>(`/v1/facilities/${encodeURIComponent(facilityId)}/lab-requests?page=${page}&per_page=${perPage}`),

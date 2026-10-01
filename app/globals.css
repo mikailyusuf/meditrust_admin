@@ -639,6 +639,22 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .created-order strong { font-size: 10px; }
 .created-order span, .created-order em { color: var(--muted); font-size: 7.5px; font-style: normal; line-height: 1.5; }
 .created-order em { color: var(--green); font-weight: 800; }
+.lab-test-picker { position: relative; }
+.lab-test-mode { display: flex !important; grid-template-columns: none !important; gap: 6px !important; }
+.lab-test-mode button { min-height: 28px; margin: 0; padding: 4px 9px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: #526a78; font-size: 8px; }
+.lab-test-mode button.selected { border-color: #8cc9df; background: var(--blue-soft); color: var(--blue); }
+.lab-test-picker input { padding-right: 76px; }
+.lab-test-clear { position: absolute; z-index: 1; top: 50%; right: 7px; width: auto; height: 27px; min-height: 27px !important; margin: 0 !important; padding: 0 8px !important; transform: translateY(-50%); border: 1px solid #b9dce8 !important; border-radius: 7px !important; background: #f1f9fc !important; color: #236d8d !important; display: inline-flex; align-items: center; gap: 4px; font-size: 8px !important; line-height: 1; cursor: pointer; }
+.lab-test-clear:hover { border-color: #74b7d0 !important; background: #e1f3f9 !important; color: #075f83 !important; }
+.lab-test-clear:focus-visible { outline: 3px solid rgba(8,126,174,.2); outline-offset: 2px; }
+.lab-test-suggestions { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; left: 0; max-height: 255px; overflow-y: auto; border: 1px solid #b8d7e3; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(24, 71, 93, .16); }
+.lab-test-suggestions > p { margin: 0; padding: 12px; color: var(--muted); font-size: 9px; }
+.lab-test-suggestions > button { width: 100%; padding: 11px 12px; border: 0; border-bottom: 1px solid #e6eef2; background: #fff; color: var(--ink); display: grid; gap: 3px; text-align: left; cursor: pointer; }
+.lab-test-suggestions > button:last-child { border-bottom: 0; }
+.lab-test-suggestions > button:hover, .lab-test-suggestions > button:focus-visible { background: #f1f9fc; outline: 0; }
+.lab-test-suggestions strong { font-size: 10px; }
+.lab-test-suggestions span, .lab-test-suggestions small { color: var(--muted); font-size: 8px; line-height: 1.4; }
+.lab-test-suggestions .lab-test-search-error { color: #b13c3c; }
 .timeline-details { border-top: 1px solid var(--border); }
 .timeline-details summary { padding: 14px 2px; color: var(--ink); font-size: 9px; font-weight: 800; cursor: pointer; }
 .timeline-details summary span { float: right; color: var(--muted); font-size: 7.5px; font-weight: 650; }
@@ -1092,6 +1108,12 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .doctor-clinical .order-card button { min-height: 46px; font-size: 13px; padding: 10px 16px; }
 .doctor-clinical .created-order strong { font-size: 14px; }
 .doctor-clinical .created-order span, .doctor-clinical .created-order em { font-size: 12px; overflow-wrap: anywhere; }
+.doctor-clinical .lab-test-clear { min-height: 32px !important; padding: 0 10px !important; font-size: 11px !important; }
+.doctor-clinical .lab-test-mode button { min-height: 34px; padding: 6px 12px; font-size: 11px; }
+.doctor-clinical .lab-test-suggestions > p { padding: 14px; font-size: 12px; }
+.doctor-clinical .lab-test-suggestions > button { padding: 14px; gap: 5px; }
+.doctor-clinical .lab-test-suggestions strong { font-size: 13px; }
+.doctor-clinical .lab-test-suggestions span, .doctor-clinical .lab-test-suggestions small { font-size: 11px; }
 .doctor-clinical .doctor-vitals { gap: 14px 24px; padding: 18px 20px; line-height: 1.6; }
 .doctor-clinical .doctor-vitals strong, .doctor-clinical .doctor-vitals span, .doctor-clinical .doctor-vitals small { font-size: 12px; }
 .doctor-clinical .ai-diagnosis-heading { padding: 20px; gap: 14px; }
