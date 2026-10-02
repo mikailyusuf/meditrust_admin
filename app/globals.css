@@ -913,6 +913,16 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
   .lab-filter-search, .lab-filter-actions { grid-column: 1 / -1; }
   .finance-filters { grid-template-columns: 1fr; }
   .finance-breakdown-grid { grid-template-columns: 1fr; }
+  .result-locked-panel { grid-template-columns: 42px 1fr; }
+  .result-locked-actions { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+  .lab-result-print-backdrop { padding: 12px; }
+  .lab-result-report { min-height: 0; padding: 29px 23px; }
+  .lab-report-header { align-items: start; flex-direction: column; gap: 16px; }
+  .lab-report-header > div { justify-items: start; text-align: left; }
+  .lab-report-patient, .lab-report-test { grid-template-columns: 1fr 1fr; }
+  .lab-report-patient > div:nth-child(2), .lab-report-test > div:nth-child(2) { border-right: 0; }
+  .lab-report-patient > div:nth-child(-n + 2), .lab-report-test > div:nth-child(-n + 2) { border-bottom: 1px solid #dce8ed; }
+  .lab-report-footer { flex-direction: column; gap: 5px; }
 }
 .lab-result-form > label:not(.result-upload) { display: grid; gap: 6px; color: #425767; font-size: 8px; font-weight: 750; }
 .lab-result-form textarea, .result-values input { width: 100%; min-height: 42px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--ink); outline: 0; font-size: 9px; font-family: inherit; }
@@ -942,7 +952,37 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .result-locked-panel > div { display: grid; gap: 4px; }
 .result-locked-panel strong { color: #205f4d; font-size: 10px; }
 .result-locked-panel p { margin: 0; color: #527a6e; font-size: 7.5px; line-height: 1.55; }
-.result-locked-panel > button { min-height: 37px; padding: 0 11px; border: 1px solid #acd8ca; border-radius: 9px; background: #fff; color: #16805f; font-size: 7.5px; font-weight: 800; }
+.result-locked-actions { display: grid; gap: 7px; }
+.result-locked-actions > button { min-height: 37px; padding: 0 11px; border: 1px solid #acd8ca; border-radius: 9px; background: #fff; color: #16805f; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 7.5px; font-weight: 800; white-space: nowrap; }
+.result-locked-actions > button:last-child { color: #527a6e; }
+.lab-result-print-backdrop { padding: 28px; position: fixed; inset: 0; z-index: 220; overflow: auto; background: rgba(4,31,49,.56); display: grid; place-items: start center; backdrop-filter: blur(5px); }
+.lab-result-print-dialog { width: min(820px, 100%); display: grid; gap: 12px; }
+.lab-result-print-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.lab-result-print-actions button { min-height: 40px; padding: 0 13px; border: 1px solid rgba(255,255,255,.4); border-radius: 10px; background: rgba(255,255,255,.13); color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 9px; font-weight: 800; cursor: pointer; }
+.lab-result-print-actions button:last-child { border-color: #fff; background: #fff; color: var(--blue-dark); }
+.lab-result-report { min-height: 960px; padding: 52px 56px 34px; background: #fff; box-shadow: 0 24px 70px rgba(0,0,0,.18); color: #183342; }
+.lab-report-header { padding-bottom: 23px; border-bottom: 3px solid var(--blue); display: flex; justify-content: space-between; align-items: center; gap: 30px; }
+.lab-report-header img { width: 174px; height: auto; object-fit: contain; }
+.lab-report-header > div { display: grid; justify-items: end; gap: 4px; text-align: right; }
+.lab-report-header span { color: var(--blue); font-size: 9px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.lab-report-header strong { color: var(--navy); font-size: 18px; letter-spacing: -.025em; }
+.lab-report-header small { color: #617987; font-size: 9px; }
+.lab-report-patient, .lab-report-test { margin-top: 27px; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #dce8ed; border-radius: 10px; overflow: hidden; }
+.lab-report-patient > div, .lab-report-test > div { min-height: 76px; padding: 14px 16px; border-right: 1px solid #dce8ed; display: grid; align-content: center; gap: 7px; }
+.lab-report-patient > div:last-child, .lab-report-test > div:last-child { border-right: 0; }
+.lab-report-patient span, .lab-report-test span { color: #69818d; font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.lab-report-patient strong, .lab-report-test strong { color: #193849; font-size: 11px; line-height: 1.35; }
+.lab-report-test { margin-top: 14px; background: #f7fbfc; }
+.lab-report-results { margin-top: 32px; }
+.lab-report-results h2 { margin: 0 0 12px; color: var(--navy); font-size: 16px; }
+.lab-report-results > p { margin: 0 0 18px; padding: 16px 18px; border-left: 3px solid var(--blue); background: #f3f9fb; color: #294858; font-size: 11px; line-height: 1.75; white-space: pre-wrap; }
+.lab-report-values { border: 1px solid #dce8ed; border-radius: 9px; overflow: hidden; }
+.lab-report-values > div { min-height: 48px; padding: 12px 16px; border-bottom: 1px solid #e6eef1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: center; font-size: 11px; }
+.lab-report-values > div:last-child { border-bottom: 0; }
+.lab-report-values > div:first-child { min-height: 38px; padding-block: 9px; background: var(--navy); color: #fff; font-size: 8px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.lab-report-values strong { font-size: 11px; font-weight: 750; }
+.lab-report-values span { color: #3c5563; }
+.lab-report-footer { margin-top: 54px; padding-top: 15px; border-top: 1px solid #dce8ed; color: #7a8f9a; display: flex; justify-content: space-between; gap: 20px; font-size: 8px; }
 .result-confirm-backdrop { padding: 18px; position: fixed; inset: 0; z-index: 200; background: rgba(4,31,49,.48); display: grid; place-items: center; backdrop-filter: blur(4px); }
 .result-confirm-dialog { width: min(440px, 100%); padding: 25px; border: 1px solid rgba(255,255,255,.45); border-radius: 20px; background: #fff; box-shadow: 0 28px 80px rgba(4,31,49,.24); display: grid; grid-template-columns: 48px 1fr; gap: 14px; animation: result-dialog-in .18s ease; }
 .result-confirm-icon { width: 48px; height: 48px; border-radius: 14px; background: #fff6dc; color: #a06c16; display: grid; place-items: center; }
@@ -954,6 +994,17 @@ h1 { margin-bottom: 7px; font-size: clamp(25px, 2.4vw, 34px); line-height: 1.15;
 .result-confirm-actions button { min-height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: #526674; font-size: 8px; font-weight: 800; }
 .result-confirm-actions button:last-child { border-color: #0b779e; background: var(--blue); color: #fff; }
 @keyframes result-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+@media print {
+  body { background: #fff; }
+  body:has(.lab-result-print-backdrop) * { visibility: hidden !important; }
+  body:has(.lab-result-print-backdrop) .lab-result-print-backdrop, body:has(.lab-result-print-backdrop) .lab-result-print-backdrop * { visibility: visible !important; }
+  body:has(.lab-result-print-backdrop) .lab-result-print-backdrop { display: block !important; position: fixed; inset: 0; overflow: visible; padding: 0; background: #fff; }
+  .lab-result-print-dialog { width: 100%; display: block; }
+  .lab-result-print-actions { display: none !important; }
+  .lab-result-report { min-height: 0; padding: 0; box-shadow: none; }
+  .lab-report-header img { width: 156px; }
+  .lab-report-patient, .lab-report-test, .lab-report-values { break-inside: avoid; }
+}
 .ancillary-loading, .ancillary-empty { min-height: 300px; padding: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }
 .ancillary-loading { flex-direction: row; font-size: 8px; }
 .ancillary-empty > svg { margin-bottom: 4px; color: #9aabb5; }

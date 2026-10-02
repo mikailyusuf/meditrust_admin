@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   ApiError,
@@ -59,6 +60,7 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
   const [files, setFiles] = useState<File[]>([]);
   const [resubmitAllowedFor, setResubmitAllowedFor] = useState<string | null>(null);
   const [confirmingResubmit, setConfirmingResubmit] = useState(false);
+  const [printPreview, setPrintPreview] = useState<LabRequest | null>(null);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -156,7 +158,7 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
         <PatientSummaryCard patient={selected.patient} />
         <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
         <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.status === "resulted"} kind="test" onSubmit={setPayment} />
-        {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
+        {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><div className="result-locked-actions"><button onClick={() => setPrintPreview(selected)}><Icon name="file" size={15} />Print result</button><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div></div> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
           <div className="ancillary-section-title"><span>Result entry</span><h3>Record laboratory findings</h3><p>Add a written interpretation and any structured result values.</p></div>
           <label>Result summary<textarea name="result_text" rows={4} required placeholder="e.g. Malaria RDT: Positive" disabled={submitting} /></label>
           <div className="result-values-heading"><div><strong>Structured values</strong><small>Optional key/value measurements</small></div><button type="button" onClick={addValue} disabled={submitting}><Icon name="userPlus" size={14} />Add value</button></div>
@@ -169,6 +171,7 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
       </> : <AncillaryEmpty title="Select a request" body="Request details and result entry will appear here." />}</section>
     </div>
     {confirmingResubmit && selected && <div className="result-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmingResubmit(false); }}><section className="result-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="result-confirm-title" aria-describedby="result-confirm-description"><span className="result-confirm-icon"><Icon name="help" size={22} /></span><div><p>Existing laboratory result</p><h2 id="result-confirm-title">Submit another result?</h2><span id="result-confirm-description">A result has already been submitted for <strong>{selected.test_name}</strong>. Continue only if you need to provide a corrected or replacement result.</span></div><div className="result-confirm-actions"><button onClick={() => setConfirmingResubmit(false)}>Keep existing result</button><button onClick={() => { setResubmitAllowedFor(selected.id); setConfirmingResubmit(false); setFormError(""); }}>Yes, enter another result</button></div></section></div>}
+    {printPreview && <LabResultPrintPreview request={printPreview} onClose={() => setPrintPreview(null)} />}
   </section>;
 }
 
@@ -393,6 +396,45 @@ type PatientDetails = Pick<PatientSummary, "name" | "digital_health_id" | "dob" 
 
 function PatientSummaryCard({ patient }: { patient?: PatientDetails }) {
   return <section className="lab-patient-card" aria-label="Patient information"><span className="lab-patient-avatar">{patientInitials(patient?.name)}</span><div><small>Patient</small><strong>{patient?.name || "Patient details unavailable"}</strong><span>{patient?.digital_health_id || "No Digital Health ID"}</span></div><dl><div><dt>Date of birth</dt><dd>{patient?.dob ? formatDate(patient.dob) : "Not provided"}</dd></div><div><dt>Sex</dt><dd>{patient?.sex ? titleCase(patient.sex) : "Not provided"}</dd></div></dl></section>;
+}
+
+function LabResultPrintPreview({ request, onClose }: { request: LabRequest; onClose: () => void }) {
+  const result = request.result;
+  const values = Object.entries(result?.values || {}).filter(([key]) => key.trim());
+
+  return <div className="lab-result-print-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="lab-result-print-dialog" role="dialog" aria-modal="true" aria-labelledby="lab-result-print-title">
+      <div className="lab-result-print-actions">
+        <button type="button" onClick={onClose}>Close preview</button>
+        <button type="button" onClick={() => window.print()}><Icon name="file" size={16} />Print result</button>
+      </div>
+      <article className="lab-result-report">
+        <header className="lab-report-header">
+          <Image src="/meditrust360-logo-transparent.png" alt="MediTrust360" width={174} height={57} />
+          <div><span>Laboratory report</span><strong>Verified laboratory result</strong><small>{request.facility?.name || "MediTrust360 Laboratory"}</small></div>
+        </header>
+        <section className="lab-report-patient">
+          <div><span>Patient name</span><strong>{request.patient?.name || "Patient details unavailable"}</strong></div>
+          <div><span>Digital Health ID</span><strong>{request.patient?.digital_health_id || "Not provided"}</strong></div>
+          <div><span>Date of birth</span><strong>{request.patient?.dob ? formatDate(request.patient.dob) : "Not provided"}</strong></div>
+          <div><span>Sex</span><strong>{request.patient?.sex ? titleCase(request.patient.sex) : "Not provided"}</strong></div>
+        </section>
+        <section className="lab-report-test">
+          <div><span>Investigation</span><strong id="lab-result-print-title">{request.test_name}</strong></div>
+          <div><span>Requested</span><strong>{formatDate(request.ordered_at)}</strong></div>
+          <div><span>Reported</span><strong>{result?.resulted_at ? formatDate(result.resulted_at) : "Not provided"}</strong></div>
+          <div><span>Requested by</span><strong>{request.doctor?.name || "Not provided"}</strong></div>
+        </section>
+        <section className="lab-report-results">
+          <h2>Results</h2>
+          {result?.result_text && <p>{result.result_text}</p>}
+          {values.length > 0 && <div className="lab-report-values"><div><span>Test / parameter</span><span>Result</span></div>{values.map(([key, value]) => <div key={key}><strong>{key}</strong><span>{value || "—"}</span></div>)}</div>}
+          {!result?.result_text && values.length === 0 && <p>No result values were recorded.</p>}
+        </section>
+        <footer className="lab-report-footer"><span>This report was generated through MediTrust360.</span><span>Report reference: {request.id}</span></footer>
+      </article>
+    </section>
+  </div>;
 }
 
 function PrescriptionFiltersForm({ draft, onChange, onApply, onClear, loading }: { draft: PrescriptionFilters; onChange: (value: PrescriptionFilters) => void; onApply: () => void; onClear: () => void; loading: boolean }) {
