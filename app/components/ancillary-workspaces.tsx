@@ -9,6 +9,7 @@ import {
   type FacilityPrescription,
   type FinanceStats,
   type FinanceStatsSection,
+  type LabResult,
   type LabRequestFilters,
   type LabRequest,
   type PaginationMeta,
@@ -68,9 +69,15 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
     setConfirmingResubmit(false);
     try {
       const result = await meditrustApi.listFacilityLabRequests(facilityId, page, filters);
-      setRequests(result.data);
+      setRequests((current) => result.data.map((item) => {
+        const existing = current.find((request) => request.id === item.id);
+        return !item.result && existing?.result ? { ...item, result: existing.result } : item;
+      }));
       setMeta(result.meta);
-      setSelected((current) => current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null);
+      setSelected((current) => {
+        const next = current ? result.data.find((item) => item.id === current.id) || result.data[0] || null : result.data[0] || null;
+        return next && !next.result && current?.id === next.id && current.result ? { ...next, result: current.result } : next;
+      });
     } catch (reason) { onError(reason); }
     finally { setLoading(false); }
   }, [facilityId, filters, onError, page]);
@@ -112,11 +119,13 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
     const resultValues = Object.fromEntries(values.filter((item) => item.key.trim()).map((item) => [item.key.trim(), item.value.trim()]));
     try {
       const uploaded = await Promise.all(files.map((file) => meditrustApi.uploadFile(file, "lab-results")));
-      await meditrustApi.submitLabResult(selected.id, {
+      const submitted = await meditrustApi.submitLabResult(selected.id, {
         result_text: String(data.get("result_text") || "").trim(),
         values: resultValues,
         file_urls: uploaded.map((file) => file.url),
       });
+      setRequests((current) => current.map((request) => request.id === submitted.id ? { ...request, ...submitted } : request));
+      setSelected((current) => current?.id === submitted.id ? { ...current, ...submitted } : current);
       notify("Laboratory result submitted successfully");
       setFiles([]);
       setResubmitAllowedFor(null);
@@ -158,7 +167,7 @@ export function LabTechWorkspace({ facilityId, role, onError, notify }: Workspac
         <PatientSummaryCard patient={selected.patient} />
         <dl className="ancillary-facts"><div><dt>Ordering doctor</dt><dd>{selected.doctor?.name || "Not provided"}</dd></div><div><dt>Ordered</dt><dd>{formatDate(selected.ordered_at)}</dd></div><div className="wide"><dt>Clinical notes</dt><dd>{selected.notes || "No notes provided"}</dd></div><div><dt>Price</dt><dd>{formatAmount(selected.amount)}</dd></div><div><dt>Payment</dt><dd>{paymentStatusLabels[selected.payment_status]}</dd></div></dl>
         <PaymentPanel key={selected.id} record={selected} canBill={canBill} locked={selected.status === "resulted"} kind="test" onSubmit={setPayment} />
-        {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><div className="result-locked-actions"><button onClick={() => setPrintPreview(selected)}><Icon name="file" size={15} />Print result</button><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div></div> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
+        {selected.status === "resulted" && resubmitAllowedFor !== selected.id ? <><LabResultSummary result={selected.result} /><div className="result-locked-panel"><span><Icon name="check" size={21} /></span><div><strong>Result already submitted</strong><p>This laboratory request already has a result. Confirm before entering a corrected or replacement result.</p></div><div className="result-locked-actions"><button onClick={() => setPrintPreview(selected)}><Icon name="file" size={15} />Print result</button><button onClick={() => setConfirmingResubmit(true)}>Enter another result</button></div></div></> : selected.payment_status === "unpaid" ? <div className="result-locked-panel"><span><Icon name="help" size={21} /></span><div><strong>Payment outstanding</strong><p>Settle or waive the payment above before releasing results for this investigation.</p></div></div> : <form className="lab-result-form" onSubmit={submitResult}>
           <div className="ancillary-section-title"><span>Result entry</span><h3>Record laboratory findings</h3><p>Add a written interpretation and any structured result values.</p></div>
           <label>Result summary<textarea name="result_text" rows={4} required placeholder="e.g. Malaria RDT: Positive" disabled={submitting} /></label>
           <div className="result-values-heading"><div><strong>Structured values</strong><small>Optional key/value measurements</small></div><button type="button" onClick={addValue} disabled={submitting}><Icon name="userPlus" size={14} />Add value</button></div>
@@ -396,6 +405,19 @@ type PatientDetails = Pick<PatientSummary, "name" | "digital_health_id" | "dob" 
 
 function PatientSummaryCard({ patient }: { patient?: PatientDetails }) {
   return <section className="lab-patient-card" aria-label="Patient information"><span className="lab-patient-avatar">{patientInitials(patient?.name)}</span><div><small>Patient</small><strong>{patient?.name || "Patient details unavailable"}</strong><span>{patient?.digital_health_id || "No Digital Health ID"}</span></div><dl><div><dt>Date of birth</dt><dd>{patient?.dob ? formatDate(patient.dob) : "Not provided"}</dd></div><div><dt>Sex</dt><dd>{patient?.sex ? titleCase(patient.sex) : "Not provided"}</dd></div></dl></section>;
+}
+
+function LabResultSummary({ result }: { result?: LabResult | null }) {
+  const values = Object.entries(result?.values || {}).filter(([key]) => key.trim());
+  if (!result) return <section className="lab-result-summary"><div className="lab-result-summary-heading"><span><Icon name="file" size={17} /></span><div><small>Submitted result</small><h3>Result details unavailable</h3></div></div><p>The request is marked as resulted, but its result details were not returned. Refresh this request to load them.</p></section>;
+
+  return <section className="lab-result-summary" aria-label="Submitted laboratory result">
+    <div className="lab-result-summary-heading"><span><Icon name="check" size={17} /></span><div><small>Submitted result</small><h3>Laboratory findings</h3></div>{result.resulted_at && <time>Reported {formatDate(result.resulted_at)}</time>}</div>
+    {result.result_text && <p>{result.result_text}</p>}
+    {values.length > 0 && <dl>{values.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value || "—"}</dd></div>)}</dl>}
+    {result.file_urls?.length ? <div className="lab-result-attachments">{result.file_urls.map((url, index) => <a key={url} href={url} target="_blank" rel="noopener noreferrer"><Icon name="file" size={13} />Attachment {index + 1}</a>)}</div> : null}
+    {!result.result_text && values.length === 0 && !result.file_urls?.length && <p>No narrative, values, or attachments were recorded for this result.</p>}
+  </section>;
 }
 
 function LabResultPrintPreview({ request, onClose }: { request: LabRequest; onClose: () => void }) {
